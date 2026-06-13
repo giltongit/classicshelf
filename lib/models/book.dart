@@ -1,16 +1,24 @@
+// @collection 어노테이션과 isarId 필드는 준비 상태 (Isar codegen 가용 시 part 복원 예정)
+import 'package:isar/isar.dart';
+
 class Book {
-  final String id; // uuid — Storage 경로의 {book_id} 컴포넌트로도 사용
-  final String userId;
-  final String title;
-  final String author;
-  final String? isbn;
+  /// Isar 로컬 PK (int auto-increment). Supabase uuid와 별도.
+  Id isarId = Isar.autoIncrement;
+
+  /// Supabase uuid — Storage 경로의 {bookId} 컴포넌트로도 사용.
+  String supabaseId;
+
+  String userId;
+  String title;
+  String author;
+  String? isbn;
 
   /// 직접 촬영: Supabase Storage public URL (covers/{userId}/{bookId}.jpg)
   /// 외부 표지: 네이버/구글 북스 원본 URL — 변환 없이 그대로 사용
-  final String? coverUrl;
+  String? coverUrl;
 
-  const Book({
-    required this.id,
+  Book({
+    required this.supabaseId,
     required this.userId,
     required this.title,
     required this.author,
@@ -19,7 +27,7 @@ class Book {
   });
 
   Book copyWith({
-    String? id,
+    String? supabaseId,
     String? userId,
     String? title,
     String? author,
@@ -27,16 +35,17 @@ class Book {
     String? coverUrl,
   }) =>
       Book(
-        id: id ?? this.id,
+        supabaseId: supabaseId ?? this.supabaseId,
         userId: userId ?? this.userId,
         title: title ?? this.title,
         author: author ?? this.author,
         isbn: isbn ?? this.isbn,
         coverUrl: coverUrl ?? this.coverUrl,
-      );
+      )..isarId = isarId;
 
+  // Supabase 직렬화: 'id' 컬럼 ↔ supabaseId
   Map<String, dynamic> toJson() => {
-        'id': id,
+        'id': supabaseId,
         'user_id': userId,
         'title': title,
         'author': author,
@@ -45,7 +54,7 @@ class Book {
       };
 
   factory Book.fromJson(Map<String, dynamic> json) => Book(
-        id: json['id'] as String,
+        supabaseId: json['id'] as String,
         userId: json['user_id'] as String,
         title: json['title'] as String,
         author: json['author'] as String,
