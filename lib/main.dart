@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import 'database/app_database.dart';
+import 'models/book.dart';
 import 'providers/cover_upload_provider.dart';
 import 'providers/providers.dart';
 import 'services/auth_service.dart';
@@ -59,11 +59,21 @@ class MyHomePage extends ConsumerWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             const Text('준비 중'),
-            const SizedBox(height: 16),
-            // [임시 - DB 검증용] 5b 끝나면 제거 예정
+            const SizedBox(height: 20),
+            // [임시 - Repository 검증용] STEP 6 화면 붙이면 제거 예정
             ElevatedButton(
-              onPressed: () => _dbTest(ref),
-              child: const Text('DB 테스트'),
+              onPressed: () => _addBookTest(ref),
+              child: const Text('책 추가 테스트'),
+            ),
+            const SizedBox(height: 8),
+            ElevatedButton(
+              onPressed: () => _syncTest(ref),
+              child: const Text('동기화 테스트'),
+            ),
+            const SizedBox(height: 8),
+            ElevatedButton(
+              onPressed: () => _listTest(ref),
+              child: const Text('목록 조회'),
             ),
           ],
         ),
@@ -71,20 +81,46 @@ class MyHomePage extends ConsumerWidget {
     );
   }
 
-  // [임시 - DB 검증용] insert 1건 → select 전체 → 개수 출력
-  Future<void> _dbTest(WidgetRef ref) async {
-    final db = ref.read(databaseProvider);
-    final bookId = 'test-${DateTime.now().millisecondsSinceEpoch}';
-    await db.into(db.books).insert(
-          BooksCompanion.insert(
-            supabaseId: bookId,
-            userId: 'test-user',
-            title: 'Drift 테스트 책',
-            author: '테스터',
-          ),
-        );
-    final rows = await db.select(db.books).get();
-    debugPrint('[DB Test] insert 완료 — books 총 ${rows.length}건');
-    debugPrint('[DB Test] 최신 행: ${rows.last.title} / ${rows.last.supabaseId}');
+  // [임시 - Repository 검증용] STEP 6 화면 붙이면 제거 예정
+  Future<void> _addBookTest(WidgetRef ref) async {
+    final repo = ref.read(bookRepositoryProvider);
+    final userId =
+        ref.read(supabaseClientProvider).auth.currentUser?.id ?? '';
+    final dummy = Book(
+      supabaseId: '', // addBook 내부에서 무시됨, Supabase가 uuid 생성
+      userId: userId,
+      title: '테스트 책 ${DateTime.now().millisecondsSinceEpoch}',
+      author: '테스터',
+    );
+    try {
+      final added = await repo.addBook(dummy);
+      debugPrint('[Book Test] addBook 완료: ${added.supabaseId} / ${added.title}');
+    } catch (e) {
+      debugPrint('[Book Test] addBook 실패: $e');
+    }
+  }
+
+  Future<void> _syncTest(WidgetRef ref) async {
+    final repo = ref.read(bookRepositoryProvider);
+    try {
+      await repo.syncFromRemote();
+      final books = await repo.getBooks();
+      debugPrint('[Book Test] syncFromRemote 완료 — Drift books: ${books.length}건');
+    } catch (e) {
+      debugPrint('[Book Test] syncFromRemote 실패: $e');
+    }
+  }
+
+  Future<void> _listTest(WidgetRef ref) async {
+    final repo = ref.read(bookRepositoryProvider);
+    try {
+      final books = await repo.getBooks();
+      debugPrint('[Book Test] getBooks: 총 ${books.length}건');
+      for (final b in books) {
+        debugPrint('[Book Test]   - ${b.title} (${b.supabaseId})');
+      }
+    } catch (e) {
+      debugPrint('[Book Test] getBooks 실패: $e');
+    }
   }
 }
