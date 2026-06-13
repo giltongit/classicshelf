@@ -217,6 +217,90 @@ class BookRepositoryImpl implements BookRepository {
     debugPrint('[QUEUE] 큐 전체 삭제: $deleted건');
   }
 
+  // TODO: 검증용 임시 — 5c-2 검증 후 제거.
+  @override
+  Future<void> reconcileLocalOnlyToRemote() async {
+    final uid = Supabase.instance.client.auth.currentUser?.id;
+    if (uid == null) {
+      debugPrint('[RECONCILE] uid 없음 — 미로그인, 중단');
+      return;
+    }
+
+    // 원격 id 집합 (현재 user의 행만)
+    final remoteRows = await Supabase.instance.client
+        .from('books')
+        .select('id')
+        .eq('user_id', uid) as List<dynamic>;
+    final remoteIds = remoteRows.map((r) => r['id'] as String).toSet();
+    debugPrint('[RECONCILE] 원격 ${remoteIds.length}건 확인');
+
+    // 로컬 전체
+    final localRows = await _db.select(_db.books).get();
+
+    // supabaseId 있음 + 원격 미존재인 행만
+    final orphans = localRows.where((r) =>
+        r.supabaseId != null &&
+        r.supabaseId!.isNotEmpty &&
+        !remoteIds.contains(r.supabaseId!));
+
+    int restored = 0;
+    for (final row in orphans) {
+      final book = _fromData(row);
+      // 기존 insert 페이로드에 uuid를 명시 — 서버가 새 uuid를 생성하지 않도록
+      final payload = {
+        'id': book.supabaseId!,
+        ...book.toSupabaseInsert(),
+        'user_id': uid, // stale userId 보정
+      };
+      try {
+        await Supabase.instance.client.from('books').insert(payload);
+        debugPrint('[RECONCILE] 복원 성공: supabaseId=${book.supabaseId} title="${book.title}"');
+        restored++;
+      } on PostgrestException catch (e) {
+        // 23505 = unique_violation: 동시에 다른 기기가 이미 복원한 경우 — 무해
+        if (e.code == '23505') {
+          debugPrint('[RECONCILE] 이미 존재(skip): supabaseId=${book.supabaseId} code=${e.code}');
+        } else {
+          debugPrint('[RECONCILE] 실패: supabaseId=${book.supabaseId} code=${e.code} msg="${e.message}"');
+        }
+      } catch (e) {
+        debugPrint('[RECONCILE] 실패(unknown): supabaseId=${book.supabaseId} $e');
+      }
+    }
+    debugPrint('[RECONCILE] 완료 — 복원 $restored건 / 대상 ${orphans.length}건');
+  }
+
+  // TODO: 검증용 임시 — 5c-2 검증 후 제거.
+  @override
+  Future<void> debugDumpRemoteVsLocal() async {
+    final uid = Supabase.instance.client.auth.currentUser?.id;
+    debugPrint('[SYNC-CHECK] uid=$uid');
+
+    final remote = await Supabase.instance.client
+        .from('books')
+        .select('id,title') as List<dynamic>;
+    debugPrint('[SYNC-CHECK] remote 총 ${remote.length}건');
+    for (final r in remote) {
+      debugPrint('[SYNC-CHECK] remote id=${r['id']} title="${r['title']}"');
+    }
+
+    final localRows = await _db.select(_db.books).get();
+    debugPrint('[SYNC-CHECK] local(Drift) 총 ${localRows.length}건');
+    for (final r in localRows) {
+      debugPrint('[SYNC-CHECK] local localId=${r.id} supabaseId=${r.supabaseId} title="${r.title}"');
+    }
+
+    final remoteIds = remote.map((r) => r['id'] as String).toSet();
+    final localSupabaseIds = localRows
+        .where((r) => r.supabaseId != null && r.supabaseId!.isNotEmpty)
+        .map((r) => r.supabaseId!)
+        .toSet();
+    final onlyRemote = remoteIds.difference(localSupabaseIds);
+    final onlyLocal = localSupabaseIds.difference(remoteIds);
+    debugPrint('[SYNC-CHECK] remote에만 있음(${onlyRemote.length}): $onlyRemote');
+    debugPrint('[SYNC-CHECK] local에만 있음(${onlyLocal.length}): $onlyLocal');
+  }
+
   // ── sync_queue flush ───────────────────────────────────────────────────────
 
   @override

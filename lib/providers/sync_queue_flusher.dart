@@ -27,6 +27,15 @@ class SyncQueueFlusher extends AsyncNotifier<void> {
       } catch (e) {
         debugPrint('[QUEUE] 앱 시작 flush 오류: $e');
       }
+
+      // uid 확보 직후 1회 — 원격 유실 행 복원 (fire-and-forget, 앱 기동 비차단)
+      ref
+          .read(bookRepositoryProvider)
+          .reconcileLocalOnlyToRemote()
+          .then((_) => ref.invalidate(booksProvider))
+          .catchError((Object e) {
+        debugPrint('[RECONCILE] 앱 시작 복원 오류: $e');
+      });
     }
 
     // 온라인 복귀 감지 → flush
