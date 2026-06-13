@@ -1,4 +1,8 @@
-import 'package:drift/drift.dart' show Value, DoUpdate;
+import 'dart:convert';
+
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:drift/drift.dart' show Value, DoUpdate, OrderingTerm;
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../database/app_database.dart';
@@ -14,68 +18,153 @@ class BookRepositoryImpl implements BookRepository {
     required this._db,
   });
 
-  // ── 공개 인터페이스 ────────────────────────────────────────────────────────
+  // ── 공개 인터페이스 ────��───────────────────────────────────────────────────
 
   @override
   Future<List<Book>> getBooks() async {
+    // TODO: 검증용 임시 — 5c-2 검증 후 제거.
+    final queueRows = await _db.select(_db.syncQueue).get();
+    debugPrint('[QUEUE-DUMP] 총 ${queueRows.length}건');
+    for (final r in queueRows) {
+      debugPrint('[QUEUE-DUMP] id=${r.id} localBookId=${r.localBookId} op=${r.operation} createdAt=${r.createdAt}');
+    }
+
     final rows = await _db.select(_db.books).get();
     return rows.map(_fromData).toList();
   }
 
   @override
   Future<Book> addBook(Book book) async {
-    // ① Supabase INSERT (id는 서버 생성, toSupabaseInsert는 id 제외)
-    final row = await _supabase
-        .from('books')
-        .insert(book.toSupabaseInsert())
-        .select()
-        .single();
-    final created = Book.fromJson(row);
+    debugPrint('[ADD] ▶ addBook 시작: title="${book.title}"');
+    // Drift INSERT 먼저 — 오프라인에서도 목록에 즉시 반영
+    final localId = await _db.into(_db.books).insert(_toCompanion(book));
+    final localBook = book.copyWith(localId: localId);
+    debugPrint('[ADD] Drift INSERT 완료: localId=$localId');
 
-    // ② Drift 미러
-    await _db.into(_db.books).insert(_toCompanion(created));
+    final isOnline = await _isOnline();
+    debugPrint('[ADD] 판정: online=$isOnline');
 
-    return created;
+    if (isOnline) {
+      final payload = book.toSupabaseInsert();
+      debugPrint('[ADD] Supabase INSERT 시도 payload keys=${payload.keys.toList()}');
+      try {
+        final row = await _supabase
+            .from('books')
+            .insert(payload)
+            .select()
+            .single();
+        final supabaseId = row['id'] as String;
+        debugPrint('[ADD] Supabase INSERT 성공: supabaseId=$supabaseId');
+        // Drift 행에 서버 uuid 반영
+        await (_db.update(_db.books)..where((t) => t.id.equals(localId)))
+            .write(BooksCompanion(supabaseId: Value(supabaseId)));
+        debugPrint('[ADD] Drift supabaseId 반영 완료');
+        final result = Book.fromJson(row).copyWith(localId: localId);
+        debugPrint('[ADD] ◀ 반환: localId=${result.localId} supabaseId=${result.supabaseId}');
+        return result;
+      } catch (e, st) {
+        debugPrint('[ADD] Supabase INSERT 예외: $e');
+        debugPrint('[ADD] StackTrace: $st');
+        await _enqueue(localId, 'insert', localBook);
+        debugPrint('[ADD] ◀ 반환(큐): localId=$localId supabaseId=null');
+        return localBook;
+      }
+    } else {
+      debugPrint('[ADD] 오프라인 → 큐 적재');
+      await _enqueue(localId, 'insert', localBook);
+      debugPrint('[ADD] ◀ 반환(큐): localId=$localId supabaseId=null');
+      return localBook;
+    }
   }
 
   @override
   Future<Book> updateBook(Book book) async {
-    // ① Supabase UPDATE
-    final row = await _supabase
-        .from('books')
-        .update(book.toSupabaseUpdate())
-        .eq('id', book.supabaseId)
-        .select()
-        .single();
-    final updated = Book.fromJson(row);
+    debugPrint('[UPD] ▶ updateBook 시작: localId=${book.localId} supabaseId=${book.supabaseId} coverUrl=${book.coverUrl}');
+    // 클라이언트 동일성 확인 — 다르면 stale 레퍼런스 문제
+    debugPrint('[UPD] 클라이언트: _supabase=${_supabase.hashCode} instance=${Supabase.instance.client.hashCode} identical=${identical(_supabase, Supabase.instance.client)}');
+    // Drift UPDATE 먼저 — 낙관적
+    try {
+      await (_db.update(_db.books)..where((t) => t.id.equals(book.localId!)))
+          .write(_toCompanion(book));
+      debugPrint('[UPD] Drift UPDATE 완료');
+    } catch (driftErr, driftSt) {
+      debugPrint('[UPD] Drift UPDATE 예외: $driftErr\n$driftSt');
+      rethrow;
+    }
 
-    // ② Drift 미러 (supabaseId 기준 row 업데이트)
-    await (_db.update(_db.books)
-          ..where((t) => t.supabaseId.equals(updated.supabaseId)))
-        .write(_toCompanion(updated));
+    if (book.supabaseId == null) {
+      // 순수 로컬 전용 — Drift만
+      debugPrint('[UPD] ◀ 반환(supabaseId 없음 → Drift만)');
+      return book;
+    }
 
-    return updated;
+    final isOnline = await _isOnline();
+    debugPrint('[UPD] 판정: online=$isOnline');
+
+    if (isOnline) {
+      final payload = book.toSupabaseUpdate();
+      debugPrint('[UPD] Supabase UPDATE 시도: supabaseId=${book.supabaseId} payload keys=${payload.keys.toList()}');
+      // stale _supabase 우회 — Supabase.instance.client 직접 사용
+      final client = Supabase.instance.client;
+      try {
+        final row = await client
+            .from('books')
+            .update(payload)
+            .eq('id', book.supabaseId!)
+            .select()
+            .single();
+        debugPrint('[UPD] Supabase UPDATE 성공 row.id=${row['id']}');
+        final updated = Book.fromJson(row).copyWith(localId: book.localId);
+        // Drift에 서버 응답 반영 (updated_at 등)
+        await (_db.update(_db.books)..where((t) => t.id.equals(book.localId!)))
+            .write(_toCompanion(updated));
+        debugPrint('[UPD] ◀ 반환: supabaseId=${updated.supabaseId}');
+        return updated;
+      } on PostgrestException catch (e) {
+        debugPrint('[UPD] PostgrestException: code=${e.code} msg="${e.message}" details=${e.details} hint=${e.hint}');
+        await _enqueue(book.localId!, 'update', book);
+        debugPrint('[UPD] ◀ 반환(큐/PG): localId=${book.localId}');
+        return book;
+      } catch (e, st) {
+        debugPrint('[UPD] Supabase UPDATE 예외(${e.runtimeType}): $e');
+        debugPrint('[UPD] StackTrace: $st');
+        await _enqueue(book.localId!, 'update', book);
+        debugPrint('[UPD] ◀ 반환(큐): localId=${book.localId}');
+        return book;
+      }
+    } else {
+      debugPrint('[UPD] 오프라인 → 큐 적재');
+      await _enqueue(book.localId!, 'update', book);
+      debugPrint('[UPD] ◀ 반환(큐): localId=${book.localId}');
+      return book;
+    }
   }
 
   @override
-  Future<void> deleteBook(String supabaseId) async {
-    // ① Supabase DELETE
-    await _supabase.from('books').delete().eq('id', supabaseId);
+  Future<void> deleteBook(Book book) async {
+    // Drift DELETE 먼저 — 낙관적
+    await (_db.delete(_db.books)..where((t) => t.id.equals(book.localId!))).go();
 
-    // ② Drift DELETE
-    await (_db.delete(_db.books)
-          ..where((t) => t.supabaseId.equals(supabaseId)))
-        .go();
+    // supabaseId 없는 순수 로컬 → 큐 적재 불필요
+    if (book.supabaseId == null) return;
+
+    if (await _isOnline()) {
+      try {
+        await Supabase.instance.client.from('books').delete().eq('id', book.supabaseId!);
+      } catch (e) {
+        debugPrint('[QUEUE] deleteBook Supabase 실패: $e');
+        await _enqueue(book.localId!, 'delete', book);
+      }
+    } else {
+      await _enqueue(book.localId!, 'delete', book);
+    }
   }
 
   @override
   Future<void> syncFromRemote() async {
-    // Supabase 전체 조회 (RLS가 본인 데이터만 반환)
-    final rows = await _supabase.from('books').select();
-
+    final rows = await Supabase.instance.client.from('books').select();
     for (final row in rows) {
       final book = Book.fromJson(row);
-      // supabaseId unique 제약 기준 upsert
       await _db.into(_db.books).insert(
             _toCompanion(book),
             onConflict: DoUpdate(
@@ -86,11 +175,223 @@ class BookRepositoryImpl implements BookRepository {
     }
   }
 
-  // ── 변환 함수 (Drift ↔ 도메인) ─────────────────────────────────────────────
+  // TODO: 검증용 임시 — 5c-2 검증 후 제거.
+  @override
+  Future<Book> addLocalOnlyBook() async {
+    final userId = _supabase.auth.currentUser?.id ?? '';
+    final ts = DateTime.now().millisecondsSinceEpoch;
+    final companion = BooksCompanion.insert(
+      userId: userId,
+      title: '[로컬] 테스트 $ts',
+      author: '로컬 전용',
+    );
+    final localId = await _db.into(_db.books).insert(companion);
+    return Book(
+      localId: localId,
+      userId: userId,
+      title: companion.title.value,
+      author: companion.author.value,
+    );
+  }
 
-  /// BookData(Drift 행) → Book 도메인
+  @override
+  Future<int> pendingQueueCount() async {
+    final rows = await _db.select(_db.syncQueue).get();
+    return rows.length;
+  }
+
+  @override
+  Future<void> debugDumpQueue() async {
+    final rows = await _db.select(_db.syncQueue).get();
+    debugPrint('[QUEUE] === 현재 ${rows.length}건 ===');
+    for (final r in rows) {
+      debugPrint(
+          '[QUEUE]  id=${r.id} op=${r.operation} localBookId=${r.localBookId} createdAt=${r.createdAt}');
+    }
+  }
+
+  // TODO: 검증용 임시 — 5c-2 검증 후 제거.
+  @override
+  Future<void> clearSyncQueue() async {
+    final deleted = await (_db.delete(_db.syncQueue)).go();
+    debugPrint('[QUEUE] 큐 전체 삭제: $deleted건');
+  }
+
+  // ── sync_queue flush ───────────────────────────────────────────────────────
+
+  @override
+  Future<void> flushSyncQueue() async {
+    final rows = await (_db.select(_db.syncQueue)
+          ..orderBy([(t) => OrderingTerm.asc(t.createdAt)]))
+        .get();
+    if (rows.isEmpty) {
+      debugPrint('[QUEUE] flush 시작: 0건 (비어 있음)');
+      return;
+    }
+    debugPrint('[QUEUE] flush 시작: ${rows.length}건');
+    for (final item in rows) {
+      try {
+        switch (item.operation) {
+          case 'insert':
+            await _flushInsert(item);
+          case 'update':
+            await _flushUpdate(item);
+          case 'delete':
+            await _flushDelete(item);
+          default:
+            debugPrint('[QUEUE] 처리: id=${item.id} op=${item.operation} → 알 수 없는 op, 삭제');
+            await _deleteQueueItem(item.id);
+        }
+      } catch (e) {
+        debugPrint('[QUEUE] 처리: id=${item.id} op=${item.operation} → 오류(보존): $e');
+      }
+    }
+    final remaining = await pendingQueueCount();
+    debugPrint('[QUEUE] flush 완료: 남은 $remaining건');
+  }
+
+  Future<void> _flushInsert(SyncQueueData item) async {
+    final bookData = await (_db.select(_db.books)
+          ..where((t) => t.id.equals(item.localBookId)))
+        .getSingleOrNull();
+    if (bookData == null) {
+      debugPrint('[QUEUE] 처리: id=${item.id} op=insert localBookId=${item.localBookId} → 책 없음, 삭제');
+      await _deleteQueueItem(item.id);
+      return;
+    }
+    if (bookData.supabaseId != null && bookData.supabaseId!.isNotEmpty) {
+      // 이미 서버에 올라간 책 → 중복 insert 방지 (null과 "" 모두 "미업로드"로 취급)
+      debugPrint('[QUEUE] 처리: id=${item.id} op=insert localBookId=${item.localBookId} → 이미 supabaseId=${bookData.supabaseId}, 삭제');
+      await _deleteQueueItem(item.id);
+      return;
+    }
+    final book = _fromData(bookData);
+    // userId가 ""이면(stale _supabase로 생성된 addLocalOnlyBook 등) 현재 세션에서 보정
+    final resolvedUserId = book.userId.isNotEmpty
+        ? book.userId
+        : (Supabase.instance.client.auth.currentUser?.id ?? '');
+    if (resolvedUserId.isEmpty) {
+      debugPrint('[QUEUE] 처리: id=${item.id} op=insert localBookId=${item.localBookId} → userId 없음(미로그인?), 보존');
+      return;
+    }
+    final bookToInsert = resolvedUserId != book.userId
+        ? book.copyWith(userId: resolvedUserId)
+        : book;
+    if (resolvedUserId != book.userId) {
+      // Drift에도 보정된 userId 반영
+      await (_db.update(_db.books)..where((t) => t.id.equals(item.localBookId)))
+          .write(BooksCompanion(userId: Value(resolvedUserId)));
+    }
+    final row = await Supabase.instance.client
+        .from('books')
+        .insert(bookToInsert.toSupabaseInsert())
+        .select()
+        .single();
+    final supabaseId = row['id'] as String;
+    await (_db.update(_db.books)..where((t) => t.id.equals(item.localBookId)))
+        .write(BooksCompanion(supabaseId: Value(supabaseId)));
+    if (bookData.coverUrl != null && !bookData.coverUrl!.startsWith('http')) {
+      debugPrint('[QUEUE] 표지경로 불일치 경고: localBookId=${item.localBookId} 신규supabaseId=$supabaseId coverUrl=${bookData.coverUrl} (로컬 경로, 재업로드 필요)');
+    }
+    await _deleteQueueItem(item.id);
+    debugPrint('[QUEUE] 처리: id=${item.id} op=insert localBookId=${item.localBookId} → 성공 supabaseId=$supabaseId');
+  }
+
+  Future<void> _flushUpdate(SyncQueueData item) async {
+    final bookData = await (_db.select(_db.books)
+          ..where((t) => t.id.equals(item.localBookId)))
+        .getSingleOrNull();
+    if (bookData == null) {
+      debugPrint('[QUEUE] 처리: id=${item.id} op=update localBookId=${item.localBookId} → 책 없음, 삭제');
+      await _deleteQueueItem(item.id);
+      return;
+    }
+    if (bookData.supabaseId == null || bookData.supabaseId!.isEmpty) {
+      // 서버에 없는 책(null 또는 ""): 대응 op=insert가 큐에 있을 것이므로 skip
+      debugPrint('[QUEUE] 처리: id=${item.id} op=update localBookId=${item.localBookId} → supabaseId 없음, skip 삭제');
+      await _deleteQueueItem(item.id);
+      return;
+    }
+    final book = _fromData(bookData);
+    // .select() 없이 PATCH — 서버 행 있으면 갱신, 없으면 0 rows(무해)
+    await Supabase.instance.client
+        .from('books')
+        .update(book.toSupabaseUpdate())
+        .eq('id', bookData.supabaseId!);
+    await _deleteQueueItem(item.id);
+    debugPrint('[QUEUE] 처리: id=${item.id} op=update localBookId=${item.localBookId} → 성공/대상없음 supabaseId=${bookData.supabaseId}');
+  }
+
+  Future<void> _flushDelete(SyncQueueData item) async {
+    final payload = jsonDecode(item.payload) as Map<String, dynamic>;
+    final supabaseId = payload['supabase_id'] as String?;
+    if (supabaseId == null) {
+      debugPrint('[QUEUE] 처리: id=${item.id} op=delete → supabaseId 없음, 삭제');
+      await _deleteQueueItem(item.id);
+      return;
+    }
+    await Supabase.instance.client.from('books').delete().eq('id', supabaseId);
+    await _deleteQueueItem(item.id);
+    debugPrint('[QUEUE] 처리: id=${item.id} op=delete → 성공 supabaseId=$supabaseId');
+  }
+
+  Future<void> _deleteQueueItem(int id) async {
+    await (_db.delete(_db.syncQueue)..where((t) => t.id.equals(id))).go();
+  }
+
+  // ── 내부 헬퍼 ─────────────────────────────────────────────────────────────
+
+  Future<bool> _isOnline() async {
+    final results = await Connectivity().checkConnectivity();
+    debugPrint('[NET] connectivity raw=$results');
+    return !results.contains(ConnectivityResult.none);
+  }
+
+  Future<void> _enqueue(int localBookId, String operation, Book book) async {
+    await _db.into(_db.syncQueue).insert(
+          SyncQueueCompanion.insert(
+            localBookId: localBookId,
+            operation: operation,
+            payload: _bookToPayload(operation, book),
+          ),
+        );
+    final count = await pendingQueueCount();
+    debugPrint('[QUEUE] 적재: op=$operation, 큐 $count건');
+  }
+
+  String _bookToPayload(String operation, Book book) {
+    if (operation == 'delete') {
+      return jsonEncode({
+        'local_book_id': book.localId,
+        'supabase_id': book.supabaseId,
+      });
+    }
+    return jsonEncode({
+      'local_book_id': book.localId,
+      if (book.supabaseId != null) 'supabase_id': book.supabaseId,
+      'user_id': book.userId,
+      'title': book.title,
+      'author': book.author,
+      if (book.isbn != null) 'isbn': book.isbn,
+      if (book.coverUrl != null) 'cover_url': book.coverUrl,
+      if (book.description != null) 'description': book.description,
+      'status': book.status,
+      if (book.review != null) 'review': book.review,
+      if (book.pageCount != null) 'page_count': book.pageCount,
+      if (book.year != null) 'year': book.year,
+      if (book.genre != null) 'genre': book.genre,
+      if (book.publisher != null) 'publisher': book.publisher,
+      if (book.location != null) 'location': book.location,
+      'priority_read': book.priorityRead,
+    });
+  }
+
+  // ── Drift ↔ 도메인 변환 ────��──────────────────────────────────────────────
+
   Book _fromData(BookData d) => Book(
-        supabaseId: d.supabaseId,
+        localId: d.id,
+        // 빈 문자열("")은 null과 동일 취급 — uuid 컬럼에 "" 전달 방지
+        supabaseId: (d.supabaseId?.isEmpty == true) ? null : d.supabaseId,
         userId: d.userId,
         title: d.title,
         author: d.author,
@@ -109,7 +410,6 @@ class BookRepositoryImpl implements BookRepository {
         updatedAt: d.updatedAt,
       );
 
-  /// Book 도메인 → BooksCompanion (Drift 삽입/수정용)
   BooksCompanion _toCompanion(Book b) => BooksCompanion(
         supabaseId: Value(b.supabaseId),
         userId: Value(b.userId),
@@ -126,11 +426,9 @@ class BookRepositoryImpl implements BookRepository {
         publisher: Value(b.publisher),
         location: Value(b.location),
         priorityRead: Value(b.priorityRead),
-        createdAt: b.createdAt != null
-            ? Value(b.createdAt!)
-            : const Value.absent(),
-        updatedAt: b.updatedAt != null
-            ? Value(b.updatedAt!)
-            : const Value.absent(),
+        createdAt:
+            b.createdAt != null ? Value(b.createdAt!) : const Value.absent(),
+        updatedAt:
+            b.updatedAt != null ? Value(b.updatedAt!) : const Value.absent(),
       );
 }

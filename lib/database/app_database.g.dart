@@ -28,9 +28,9 @@ class $BooksTable extends Books with TableInfo<$BooksTable, BookData> {
   late final GeneratedColumn<String> supabaseId = GeneratedColumn<String>(
     'supabase_id',
     aliasedName,
-    false,
+    true,
     type: DriftSqlType.string,
-    requiredDuringInsert: true,
+    requiredDuringInsert: false,
     defaultConstraints: GeneratedColumn.constraintIsAlways('UNIQUE'),
   );
   static const VerificationMeta _userIdMeta = const VerificationMeta('userId');
@@ -241,8 +241,6 @@ class $BooksTable extends Books with TableInfo<$BooksTable, BookData> {
         _supabaseIdMeta,
         supabaseId.isAcceptableOrUnknown(data['supabase_id']!, _supabaseIdMeta),
       );
-    } else if (isInserting) {
-      context.missing(_supabaseIdMeta);
     }
     if (data.containsKey('user_id')) {
       context.handle(
@@ -368,7 +366,7 @@ class $BooksTable extends Books with TableInfo<$BooksTable, BookData> {
       supabaseId: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}supabase_id'],
-      )!,
+      ),
       userId: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}user_id'],
@@ -444,7 +442,7 @@ class $BooksTable extends Books with TableInfo<$BooksTable, BookData> {
 
 class BookData extends DataClass implements Insertable<BookData> {
   final int id;
-  final String supabaseId;
+  final String? supabaseId;
   final String userId;
   final String title;
   final String author;
@@ -463,7 +461,7 @@ class BookData extends DataClass implements Insertable<BookData> {
   final DateTime updatedAt;
   const BookData({
     required this.id,
-    required this.supabaseId,
+    this.supabaseId,
     required this.userId,
     required this.title,
     required this.author,
@@ -485,7 +483,9 @@ class BookData extends DataClass implements Insertable<BookData> {
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     map['id'] = Variable<int>(id);
-    map['supabase_id'] = Variable<String>(supabaseId);
+    if (!nullToAbsent || supabaseId != null) {
+      map['supabase_id'] = Variable<String>(supabaseId);
+    }
     map['user_id'] = Variable<String>(userId);
     map['title'] = Variable<String>(title);
     map['author'] = Variable<String>(author);
@@ -526,7 +526,9 @@ class BookData extends DataClass implements Insertable<BookData> {
   BooksCompanion toCompanion(bool nullToAbsent) {
     return BooksCompanion(
       id: Value(id),
-      supabaseId: Value(supabaseId),
+      supabaseId: supabaseId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(supabaseId),
       userId: Value(userId),
       title: Value(title),
       author: Value(author),
@@ -567,7 +569,7 @@ class BookData extends DataClass implements Insertable<BookData> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return BookData(
       id: serializer.fromJson<int>(json['id']),
-      supabaseId: serializer.fromJson<String>(json['supabaseId']),
+      supabaseId: serializer.fromJson<String?>(json['supabaseId']),
       userId: serializer.fromJson<String>(json['userId']),
       title: serializer.fromJson<String>(json['title']),
       author: serializer.fromJson<String>(json['author']),
@@ -591,7 +593,7 @@ class BookData extends DataClass implements Insertable<BookData> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
       'id': serializer.toJson<int>(id),
-      'supabaseId': serializer.toJson<String>(supabaseId),
+      'supabaseId': serializer.toJson<String?>(supabaseId),
       'userId': serializer.toJson<String>(userId),
       'title': serializer.toJson<String>(title),
       'author': serializer.toJson<String>(author),
@@ -613,7 +615,7 @@ class BookData extends DataClass implements Insertable<BookData> {
 
   BookData copyWith({
     int? id,
-    String? supabaseId,
+    Value<String?> supabaseId = const Value.absent(),
     String? userId,
     String? title,
     String? author,
@@ -632,7 +634,7 @@ class BookData extends DataClass implements Insertable<BookData> {
     DateTime? updatedAt,
   }) => BookData(
     id: id ?? this.id,
-    supabaseId: supabaseId ?? this.supabaseId,
+    supabaseId: supabaseId.present ? supabaseId.value : this.supabaseId,
     userId: userId ?? this.userId,
     title: title ?? this.title,
     author: author ?? this.author,
@@ -751,7 +753,7 @@ class BookData extends DataClass implements Insertable<BookData> {
 
 class BooksCompanion extends UpdateCompanion<BookData> {
   final Value<int> id;
-  final Value<String> supabaseId;
+  final Value<String?> supabaseId;
   final Value<String> userId;
   final Value<String> title;
   final Value<String> author;
@@ -790,7 +792,7 @@ class BooksCompanion extends UpdateCompanion<BookData> {
   });
   BooksCompanion.insert({
     this.id = const Value.absent(),
-    required String supabaseId,
+    this.supabaseId = const Value.absent(),
     required String userId,
     required String title,
     required String author,
@@ -807,8 +809,7 @@ class BooksCompanion extends UpdateCompanion<BookData> {
     this.priorityRead = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
-  }) : supabaseId = Value(supabaseId),
-       userId = Value(userId),
+  }) : userId = Value(userId),
        title = Value(title),
        author = Value(author);
   static Insertable<BookData> custom({
@@ -855,7 +856,7 @@ class BooksCompanion extends UpdateCompanion<BookData> {
 
   BooksCompanion copyWith({
     Value<int>? id,
-    Value<String>? supabaseId,
+    Value<String?>? supabaseId,
     Value<String>? userId,
     Value<String>? title,
     Value<String>? author,
@@ -981,21 +982,378 @@ class BooksCompanion extends UpdateCompanion<BookData> {
   }
 }
 
+class $SyncQueueTable extends SyncQueue
+    with TableInfo<$SyncQueueTable, SyncQueueData> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $SyncQueueTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _localBookIdMeta = const VerificationMeta(
+    'localBookId',
+  );
+  @override
+  late final GeneratedColumn<int> localBookId = GeneratedColumn<int>(
+    'local_book_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _operationMeta = const VerificationMeta(
+    'operation',
+  );
+  @override
+  late final GeneratedColumn<String> operation = GeneratedColumn<String>(
+    'operation',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _payloadMeta = const VerificationMeta(
+    'payload',
+  );
+  @override
+  late final GeneratedColumn<String> payload = GeneratedColumn<String>(
+    'payload',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    localBookId,
+    operation,
+    payload,
+    createdAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'sync_queue';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<SyncQueueData> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('local_book_id')) {
+      context.handle(
+        _localBookIdMeta,
+        localBookId.isAcceptableOrUnknown(
+          data['local_book_id']!,
+          _localBookIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_localBookIdMeta);
+    }
+    if (data.containsKey('operation')) {
+      context.handle(
+        _operationMeta,
+        operation.isAcceptableOrUnknown(data['operation']!, _operationMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_operationMeta);
+    }
+    if (data.containsKey('payload')) {
+      context.handle(
+        _payloadMeta,
+        payload.isAcceptableOrUnknown(data['payload']!, _payloadMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_payloadMeta);
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  SyncQueueData map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return SyncQueueData(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      localBookId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}local_book_id'],
+      )!,
+      operation: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}operation'],
+      )!,
+      payload: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}payload'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+    );
+  }
+
+  @override
+  $SyncQueueTable createAlias(String alias) {
+    return $SyncQueueTable(attachedDatabase, alias);
+  }
+}
+
+class SyncQueueData extends DataClass implements Insertable<SyncQueueData> {
+  final int id;
+  final int localBookId;
+  final String operation;
+  final String payload;
+  final DateTime createdAt;
+  const SyncQueueData({
+    required this.id,
+    required this.localBookId,
+    required this.operation,
+    required this.payload,
+    required this.createdAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['local_book_id'] = Variable<int>(localBookId);
+    map['operation'] = Variable<String>(operation);
+    map['payload'] = Variable<String>(payload);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    return map;
+  }
+
+  SyncQueueCompanion toCompanion(bool nullToAbsent) {
+    return SyncQueueCompanion(
+      id: Value(id),
+      localBookId: Value(localBookId),
+      operation: Value(operation),
+      payload: Value(payload),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory SyncQueueData.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return SyncQueueData(
+      id: serializer.fromJson<int>(json['id']),
+      localBookId: serializer.fromJson<int>(json['localBookId']),
+      operation: serializer.fromJson<String>(json['operation']),
+      payload: serializer.fromJson<String>(json['payload']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'localBookId': serializer.toJson<int>(localBookId),
+      'operation': serializer.toJson<String>(operation),
+      'payload': serializer.toJson<String>(payload),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+    };
+  }
+
+  SyncQueueData copyWith({
+    int? id,
+    int? localBookId,
+    String? operation,
+    String? payload,
+    DateTime? createdAt,
+  }) => SyncQueueData(
+    id: id ?? this.id,
+    localBookId: localBookId ?? this.localBookId,
+    operation: operation ?? this.operation,
+    payload: payload ?? this.payload,
+    createdAt: createdAt ?? this.createdAt,
+  );
+  SyncQueueData copyWithCompanion(SyncQueueCompanion data) {
+    return SyncQueueData(
+      id: data.id.present ? data.id.value : this.id,
+      localBookId: data.localBookId.present
+          ? data.localBookId.value
+          : this.localBookId,
+      operation: data.operation.present ? data.operation.value : this.operation,
+      payload: data.payload.present ? data.payload.value : this.payload,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SyncQueueData(')
+          ..write('id: $id, ')
+          ..write('localBookId: $localBookId, ')
+          ..write('operation: $operation, ')
+          ..write('payload: $payload, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(id, localBookId, operation, payload, createdAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is SyncQueueData &&
+          other.id == this.id &&
+          other.localBookId == this.localBookId &&
+          other.operation == this.operation &&
+          other.payload == this.payload &&
+          other.createdAt == this.createdAt);
+}
+
+class SyncQueueCompanion extends UpdateCompanion<SyncQueueData> {
+  final Value<int> id;
+  final Value<int> localBookId;
+  final Value<String> operation;
+  final Value<String> payload;
+  final Value<DateTime> createdAt;
+  const SyncQueueCompanion({
+    this.id = const Value.absent(),
+    this.localBookId = const Value.absent(),
+    this.operation = const Value.absent(),
+    this.payload = const Value.absent(),
+    this.createdAt = const Value.absent(),
+  });
+  SyncQueueCompanion.insert({
+    this.id = const Value.absent(),
+    required int localBookId,
+    required String operation,
+    required String payload,
+    this.createdAt = const Value.absent(),
+  }) : localBookId = Value(localBookId),
+       operation = Value(operation),
+       payload = Value(payload);
+  static Insertable<SyncQueueData> custom({
+    Expression<int>? id,
+    Expression<int>? localBookId,
+    Expression<String>? operation,
+    Expression<String>? payload,
+    Expression<DateTime>? createdAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (localBookId != null) 'local_book_id': localBookId,
+      if (operation != null) 'operation': operation,
+      if (payload != null) 'payload': payload,
+      if (createdAt != null) 'created_at': createdAt,
+    });
+  }
+
+  SyncQueueCompanion copyWith({
+    Value<int>? id,
+    Value<int>? localBookId,
+    Value<String>? operation,
+    Value<String>? payload,
+    Value<DateTime>? createdAt,
+  }) {
+    return SyncQueueCompanion(
+      id: id ?? this.id,
+      localBookId: localBookId ?? this.localBookId,
+      operation: operation ?? this.operation,
+      payload: payload ?? this.payload,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (localBookId.present) {
+      map['local_book_id'] = Variable<int>(localBookId.value);
+    }
+    if (operation.present) {
+      map['operation'] = Variable<String>(operation.value);
+    }
+    if (payload.present) {
+      map['payload'] = Variable<String>(payload.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SyncQueueCompanion(')
+          ..write('id: $id, ')
+          ..write('localBookId: $localBookId, ')
+          ..write('operation: $operation, ')
+          ..write('payload: $payload, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
   late final $BooksTable books = $BooksTable(this);
+  late final $SyncQueueTable syncQueue = $SyncQueueTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
   @override
-  List<DatabaseSchemaEntity> get allSchemaEntities => [books];
+  List<DatabaseSchemaEntity> get allSchemaEntities => [books, syncQueue];
 }
 
 typedef $$BooksTableCreateCompanionBuilder =
     BooksCompanion Function({
       Value<int> id,
-      required String supabaseId,
+      Value<String?> supabaseId,
       required String userId,
       required String title,
       required String author,
@@ -1016,7 +1374,7 @@ typedef $$BooksTableCreateCompanionBuilder =
 typedef $$BooksTableUpdateCompanionBuilder =
     BooksCompanion Function({
       Value<int> id,
-      Value<String> supabaseId,
+      Value<String?> supabaseId,
       Value<String> userId,
       Value<String> title,
       Value<String> author,
@@ -1333,7 +1691,7 @@ class $$BooksTableTableManager
           updateCompanionCallback:
               ({
                 Value<int> id = const Value.absent(),
-                Value<String> supabaseId = const Value.absent(),
+                Value<String?> supabaseId = const Value.absent(),
                 Value<String> userId = const Value.absent(),
                 Value<String> title = const Value.absent(),
                 Value<String> author = const Value.absent(),
@@ -1373,7 +1731,7 @@ class $$BooksTableTableManager
           createCompanionCallback:
               ({
                 Value<int> id = const Value.absent(),
-                required String supabaseId,
+                Value<String?> supabaseId = const Value.absent(),
                 required String userId,
                 required String title,
                 required String author,
@@ -1432,10 +1790,208 @@ typedef $$BooksTableProcessedTableManager =
       BookData,
       PrefetchHooks Function()
     >;
+typedef $$SyncQueueTableCreateCompanionBuilder =
+    SyncQueueCompanion Function({
+      Value<int> id,
+      required int localBookId,
+      required String operation,
+      required String payload,
+      Value<DateTime> createdAt,
+    });
+typedef $$SyncQueueTableUpdateCompanionBuilder =
+    SyncQueueCompanion Function({
+      Value<int> id,
+      Value<int> localBookId,
+      Value<String> operation,
+      Value<String> payload,
+      Value<DateTime> createdAt,
+    });
+
+class $$SyncQueueTableFilterComposer
+    extends Composer<_$AppDatabase, $SyncQueueTable> {
+  $$SyncQueueTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get localBookId => $composableBuilder(
+    column: $table.localBookId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get operation => $composableBuilder(
+    column: $table.operation,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get payload => $composableBuilder(
+    column: $table.payload,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$SyncQueueTableOrderingComposer
+    extends Composer<_$AppDatabase, $SyncQueueTable> {
+  $$SyncQueueTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get localBookId => $composableBuilder(
+    column: $table.localBookId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get operation => $composableBuilder(
+    column: $table.operation,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get payload => $composableBuilder(
+    column: $table.payload,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$SyncQueueTableAnnotationComposer
+    extends Composer<_$AppDatabase, $SyncQueueTable> {
+  $$SyncQueueTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<int> get localBookId => $composableBuilder(
+    column: $table.localBookId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get operation =>
+      $composableBuilder(column: $table.operation, builder: (column) => column);
+
+  GeneratedColumn<String> get payload =>
+      $composableBuilder(column: $table.payload, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+}
+
+class $$SyncQueueTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $SyncQueueTable,
+          SyncQueueData,
+          $$SyncQueueTableFilterComposer,
+          $$SyncQueueTableOrderingComposer,
+          $$SyncQueueTableAnnotationComposer,
+          $$SyncQueueTableCreateCompanionBuilder,
+          $$SyncQueueTableUpdateCompanionBuilder,
+          (
+            SyncQueueData,
+            BaseReferences<_$AppDatabase, $SyncQueueTable, SyncQueueData>,
+          ),
+          SyncQueueData,
+          PrefetchHooks Function()
+        > {
+  $$SyncQueueTableTableManager(_$AppDatabase db, $SyncQueueTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$SyncQueueTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$SyncQueueTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$SyncQueueTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int> localBookId = const Value.absent(),
+                Value<String> operation = const Value.absent(),
+                Value<String> payload = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+              }) => SyncQueueCompanion(
+                id: id,
+                localBookId: localBookId,
+                operation: operation,
+                payload: payload,
+                createdAt: createdAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required int localBookId,
+                required String operation,
+                required String payload,
+                Value<DateTime> createdAt = const Value.absent(),
+              }) => SyncQueueCompanion.insert(
+                id: id,
+                localBookId: localBookId,
+                operation: operation,
+                payload: payload,
+                createdAt: createdAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$SyncQueueTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $SyncQueueTable,
+      SyncQueueData,
+      $$SyncQueueTableFilterComposer,
+      $$SyncQueueTableOrderingComposer,
+      $$SyncQueueTableAnnotationComposer,
+      $$SyncQueueTableCreateCompanionBuilder,
+      $$SyncQueueTableUpdateCompanionBuilder,
+      (
+        SyncQueueData,
+        BaseReferences<_$AppDatabase, $SyncQueueTable, SyncQueueData>,
+      ),
+      SyncQueueData,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
   $AppDatabaseManager(this._db);
   $$BooksTableTableManager get books =>
       $$BooksTableTableManager(_db, _db.books);
+  $$SyncQueueTableTableManager get syncQueue =>
+      $$SyncQueueTableTableManager(_db, _db.syncQueue);
 }

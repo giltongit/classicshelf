@@ -1,8 +1,10 @@
-/// 도메인 모델. Drift int PK는 database 계층에서만 관리하며 여기에 노출하지 않는다.
-/// supabaseId = Supabase의 uuid(PK), Drift에서는 unique index 컬럼으로 대응.
 class Book {
+  /// Drift auto-increment PK. Drift에서 읽어올 때 채워짐; 아직 미저장이면 null.
+  final int? localId;
+
   /// Supabase uuid — Storage 경로 {bookId} 컴포넌트로도 사용.
-  final String supabaseId;
+  /// Supabase에 아직 동기화되지 않은 로컬 전용 책은 null.
+  final String? supabaseId;
   final String userId;
   final String title;
   final String author;
@@ -25,7 +27,8 @@ class Book {
   final DateTime? updatedAt;
 
   const Book({
-    required this.supabaseId,
+    this.localId,
+    this.supabaseId,
     required this.userId,
     required this.title,
     required this.author,
@@ -45,6 +48,7 @@ class Book {
   });
 
   Book copyWith({
+    int? localId,
     String? supabaseId,
     String? userId,
     String? title,
@@ -64,6 +68,7 @@ class Book {
     DateTime? updatedAt,
   }) =>
       Book(
+        localId: localId ?? this.localId,
         supabaseId: supabaseId ?? this.supabaseId,
         userId: userId ?? this.userId,
         title: title ?? this.title,
@@ -122,6 +127,7 @@ class Book {
       };
 
   /// Supabase 응답 row(snake_case) → Book 도메인.
+  /// localId는 Supabase가 모르므로 채우지 않는다 (호출 측에서 copyWith로 추가).
   factory Book.fromJson(Map<String, dynamic> json) => Book(
         supabaseId: json['id'] as String,
         userId: json['user_id'] as String,

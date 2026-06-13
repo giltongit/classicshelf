@@ -7,22 +7,17 @@ import 'package:path_provider/path_provider.dart';
 
 part 'app_database.g.dart';
 
-/// Supabase books 스키마와 1:1 대응.
-/// id: 로컬 auto-increment PK (Drift 내부용)
-/// supabaseId: Supabase uuid, unique index (비즈니스 식별자)
-/// @DataClassName: 도메인 모델 Book과 이름 충돌 방지 → BookData
 @DataClassName('BookData')
 class Books extends Table {
   IntColumn get id => integer().autoIncrement()();
-  TextColumn get supabaseId => text().unique()();
+  TextColumn get supabaseId => text().nullable().unique()();
   TextColumn get userId => text()();
   TextColumn get title => text()();
   TextColumn get author => text()();
   TextColumn get isbn => text().nullable()();
   TextColumn get coverUrl => text().nullable()();
   TextColumn get description => text().nullable()();
-  TextColumn get status =>
-      text().withDefault(const Constant('owned'))();
+  TextColumn get status => text().withDefault(const Constant('owned'))();
   TextColumn get review => text().nullable()();
   IntColumn get pageCount => integer().nullable()();
   TextColumn get year => text().nullable()();
@@ -37,12 +32,36 @@ class Books extends Table {
       dateTime().withDefault(currentDateAndTime)();
 }
 
-@DriftDatabase(tables: [Books])
+/// 오프라인 동기화 큐. operation: 'insert' | 'update' | 'delete'.
+/// payload: snake_case JSON 스냅샷 (delete는 식별자만).
+@DataClassName('SyncQueueData')
+class SyncQueue extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get localBookId => integer()();
+  TextColumn get operation => text()();
+  TextColumn get payload => text()();
+  DateTimeColumn get createdAt =>
+      dateTime().withDefault(currentDateAndTime)();
+}
+
+@DriftDatabase(tables: [Books, SyncQueue])
 class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 3;
+
+  @override
+  MigrationStrategy get migration => MigrationStrategy(
+        onUpgrade: (m, from, to) async {
+          if (from < 2) {
+            await m.alterTable(TableMigration(books));
+          }
+          if (from < 3) {
+            await m.createTable(syncQueue);
+          }
+        },
+      );
 }
 
 QueryExecutor openDatabaseConnection() {
