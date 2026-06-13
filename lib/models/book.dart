@@ -1,23 +1,19 @@
-// @collection 어노테이션과 isarId 필드는 준비 상태 (Isar codegen 가용 시 part 복원 예정)
-import 'package:isar/isar.dart';
-
+/// 도메인 모델. 로컬 DB의 int PK(Drift)와 Supabase uuid(supabaseId)를 분리한다.
+/// Drift 테이블의 int id는 database 계층에서만 관리하며 이 모델에 노출하지 않는다.
 class Book {
-  /// Isar 로컬 PK (int auto-increment). Supabase uuid와 별도.
-  Id isarId = Isar.autoIncrement;
-
   /// Supabase uuid — Storage 경로의 {bookId} 컴포넌트로도 사용.
-  String supabaseId;
+  final String supabaseId;
 
-  String userId;
-  String title;
-  String author;
-  String? isbn;
+  final String userId;
+  final String title;
+  final String author;
+  final String? isbn;
 
   /// 직접 촬영: Supabase Storage public URL (covers/{userId}/{bookId}.jpg)
   /// 외부 표지: 네이버/구글 북스 원본 URL — 변환 없이 그대로 사용
-  String? coverUrl;
+  final String? coverUrl;
 
-  Book({
+  const Book({
     required this.supabaseId,
     required this.userId,
     required this.title,
@@ -41,7 +37,7 @@ class Book {
         author: author ?? this.author,
         isbn: isbn ?? this.isbn,
         coverUrl: coverUrl ?? this.coverUrl,
-      )..isarId = isarId;
+      );
 
   // Supabase 직렬화: 'id' 컬럼 ↔ supabaseId
   Map<String, dynamic> toJson() => {

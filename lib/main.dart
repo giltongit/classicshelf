@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'database/app_database.dart';
 import 'providers/cover_upload_provider.dart';
+import 'providers/providers.dart';
 import 'services/auth_service.dart';
 
 // 실행 시 --dart-define-from-file=env/dev.json 필수
@@ -38,7 +40,7 @@ class MyApp extends StatelessWidget {
   }
 }
 
-/// 앱 진입점 화면. 실제 UI는 STEP 5+ 에서 구성.
+/// 앱 진입점 화면. 실제 UI는 STEP 6+ 에서 구성.
 class MyHomePage extends ConsumerWidget {
   const MyHomePage({super.key});
 
@@ -52,9 +54,37 @@ class MyHomePage extends ConsumerWidget {
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         title: const Text('My Library'),
       ),
-      body: const Center(
-        child: Text('준비 중'),
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Text('준비 중'),
+            const SizedBox(height: 16),
+            // [임시 - DB 검증용] 5b 끝나면 제거 예정
+            ElevatedButton(
+              onPressed: () => _dbTest(ref),
+              child: const Text('DB 테스트'),
+            ),
+          ],
+        ),
       ),
     );
+  }
+
+  // [임시 - DB 검증용] insert 1건 → select 전체 → 개수 출력
+  Future<void> _dbTest(WidgetRef ref) async {
+    final db = ref.read(databaseProvider);
+    final bookId = 'test-${DateTime.now().millisecondsSinceEpoch}';
+    await db.into(db.books).insert(
+          BooksCompanion.insert(
+            supabaseId: bookId,
+            userId: 'test-user',
+            title: 'Drift 테스트 책',
+            author: '테스터',
+          ),
+        );
+    final rows = await db.select(db.books).get();
+    debugPrint('[DB Test] insert 완료 — books 총 ${rows.length}건');
+    debugPrint('[DB Test] 최신 행: ${rows.last.title} / ${rows.last.supabaseId}');
   }
 }
