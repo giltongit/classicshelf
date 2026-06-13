@@ -1,5 +1,7 @@
 # Bookshelf — 기능 정리
 
+> **⚠️ 이 문서는 legacy 프로젝트(`bookshelf_sheets\bookshelf`) 기준 스냅샷이다. 현재 활성 프로젝트는 `mylibrary`이며, 최신 아키텍처는 `공통_아키텍처.md`를 참고할 것.**
+
 개인 도서 관리용 Flutter 앱. 로컬 SQLite 저장 + Google Sheets 동기화 + 표지 사진 Drive 업로드 + 바코드 스캔/검색을 제공한다.
 
 본 문서는 `C:\Users\DSU\Desktop\learningapple\bookshelf_sheets\bookshelf\` 기준의 현 시점 코드를 그대로 반영한다.
