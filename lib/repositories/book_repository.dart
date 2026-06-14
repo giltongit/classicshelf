@@ -25,11 +25,9 @@ abstract interface class BookRepository {
   Future<void> flushSyncQueue();
 
   // TODO: 검증용 임시 — 5c-2 검증 후 제거.
-  Future<Book> addLocalOnlyBook();
   Future<int> pendingQueueCount();
   Future<void> debugDumpQueue();
   Future<void> clearSyncQueue();
-  Future<void> debugDumpRemoteVsLocal();
 
   /// 로컬에 supabaseId가 있으나 원격에 없는 행을 동일 uuid로 재삽입.
   /// 원격에 이미 있는 행은 건드리지 않는다(보수적).

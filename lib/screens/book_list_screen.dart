@@ -22,13 +22,6 @@ class BookListScreen extends ConsumerWidget {
         actions: [
           // TODO: 검증용 임시 버튼들 — 5c-2 검증 후 제거.
           IconButton(
-            icon: const Icon(Icons.compare_arrows),
-            tooltip: 'Remote vs Local 비교 (테스트)',
-            onPressed: () async {
-              await ref.read(bookRepositoryProvider).debugDumpRemoteVsLocal();
-            },
-          ),
-          IconButton(
             icon: const Icon(Icons.storage_outlined),
             tooltip: '큐 상태 (테스트)',
             onPressed: () async {
@@ -40,14 +33,6 @@ class BookListScreen extends ConsumerWidget {
             tooltip: '큐 초기화 (테스트)',
             onPressed: () async {
               await ref.read(bookRepositoryProvider).clearSyncQueue();
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.bug_report_outlined),
-            tooltip: '로컬 전용 책 추가 (테스트)',
-            onPressed: () async {
-              await ref.read(bookRepositoryProvider).addLocalOnlyBook();
-              ref.invalidate(booksProvider);
             },
           ),
           IconButton(

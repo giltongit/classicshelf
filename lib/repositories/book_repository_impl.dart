@@ -22,13 +22,6 @@ class BookRepositoryImpl implements BookRepository {
 
   @override
   Future<List<Book>> getBooks() async {
-    // TODO: 검증용 임시 — 5c-2 검증 후 제거.
-    final queueRows = await _db.select(_db.syncQueue).get();
-    debugPrint('[QUEUE-DUMP] 총 ${queueRows.length}건');
-    for (final r in queueRows) {
-      debugPrint('[QUEUE-DUMP] id=${r.id} localBookId=${r.localBookId} op=${r.operation} createdAt=${r.createdAt}');
-    }
-
     final rows = await _db.select(_db.books).get();
     return rows.map(_fromData).toList();
   }
@@ -175,25 +168,6 @@ class BookRepositoryImpl implements BookRepository {
     }
   }
 
-  // TODO: 검증용 임시 — 5c-2 검증 후 제거.
-  @override
-  Future<Book> addLocalOnlyBook() async {
-    final userId = _supabase.auth.currentUser?.id ?? '';
-    final ts = DateTime.now().millisecondsSinceEpoch;
-    final companion = BooksCompanion.insert(
-      userId: userId,
-      title: '[로컬] 테스트 $ts',
-      author: '로컬 전용',
-    );
-    final localId = await _db.into(_db.books).insert(companion);
-    return Book(
-      localId: localId,
-      userId: userId,
-      title: companion.title.value,
-      author: companion.author.value,
-    );
-  }
-
   @override
   Future<int> pendingQueueCount() async {
     final rows = await _db.select(_db.syncQueue).get();
@@ -268,37 +242,6 @@ class BookRepositoryImpl implements BookRepository {
       }
     }
     debugPrint('[RECONCILE] 완료 — 복원 $restored건 / 대상 ${orphans.length}건');
-  }
-
-  // TODO: 검증용 임시 — 5c-2 검증 후 제거.
-  @override
-  Future<void> debugDumpRemoteVsLocal() async {
-    final uid = Supabase.instance.client.auth.currentUser?.id;
-    debugPrint('[SYNC-CHECK] uid=$uid');
-
-    final remote = await Supabase.instance.client
-        .from('books')
-        .select('id,title') as List<dynamic>;
-    debugPrint('[SYNC-CHECK] remote 총 ${remote.length}건');
-    for (final r in remote) {
-      debugPrint('[SYNC-CHECK] remote id=${r['id']} title="${r['title']}"');
-    }
-
-    final localRows = await _db.select(_db.books).get();
-    debugPrint('[SYNC-CHECK] local(Drift) 총 ${localRows.length}건');
-    for (final r in localRows) {
-      debugPrint('[SYNC-CHECK] local localId=${r.id} supabaseId=${r.supabaseId} title="${r.title}"');
-    }
-
-    final remoteIds = remote.map((r) => r['id'] as String).toSet();
-    final localSupabaseIds = localRows
-        .where((r) => r.supabaseId != null && r.supabaseId!.isNotEmpty)
-        .map((r) => r.supabaseId!)
-        .toSet();
-    final onlyRemote = remoteIds.difference(localSupabaseIds);
-    final onlyLocal = localSupabaseIds.difference(remoteIds);
-    debugPrint('[SYNC-CHECK] remote에만 있음(${onlyRemote.length}): $onlyRemote');
-    debugPrint('[SYNC-CHECK] local에만 있음(${onlyLocal.length}): $onlyLocal');
   }
 
   // ── sync_queue flush ───────────────────────────────────────────────────────
