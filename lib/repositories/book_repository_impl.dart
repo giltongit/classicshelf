@@ -284,20 +284,22 @@ class BookRepositoryImpl implements BookRepository {
   // ── sync_queue flush ───────────────────────────────────────────────────────
 
   @override
-  Future<void> flushSyncQueue() async {
+  Future<List<BookInsertResult>> flushSyncQueue() async {
     final rows = await (_db.select(_db.syncQueue)
           ..orderBy([(t) => OrderingTerm.asc(t.createdAt)]))
         .get();
     if (rows.isEmpty) {
       debugPrint('[QUEUE] flush 시작: 0건 (비어 있음)');
-      return;
+      return const [];
     }
     debugPrint('[QUEUE] flush 시작: ${rows.length}건');
+    final inserted = <BookInsertResult>[];
     for (final item in rows) {
       try {
         switch (item.operation) {
           case 'insert':
-            await _flushInsert(item);
+            final result = await _flushInsert(item);
+            if (result != null) inserted.add(result);
           case 'update':
             await _flushUpdate(item);
           case 'delete':
@@ -311,38 +313,37 @@ class BookRepositoryImpl implements BookRepository {
       }
     }
     final remaining = await pendingQueueCount();
-    debugPrint('[QUEUE] flush 완료: 남은 $remaining건');
+    debugPrint('[QUEUE] flush 완료: 남은 $remaining건, 신규 insert ${inserted.length}건');
+    return inserted;
   }
 
-  Future<void> _flushInsert(SyncQueueData item) async {
+  /// insert 성공 시 BookInsertResult 반환, 스킵/실패 시 null.
+  Future<BookInsertResult?> _flushInsert(SyncQueueData item) async {
     final bookData = await (_db.select(_db.books)
           ..where((t) => t.id.equals(item.localBookId)))
         .getSingleOrNull();
     if (bookData == null) {
       debugPrint('[QUEUE] 처리: id=${item.id} op=insert localBookId=${item.localBookId} → 책 없음, 삭제');
       await _deleteQueueItem(item.id);
-      return;
+      return null;
     }
     if (bookData.supabaseId != null && bookData.supabaseId!.isNotEmpty) {
-      // 이미 서버에 올라간 책 → 중복 insert 방지 (null과 "" 모두 "미업로드"로 취급)
       debugPrint('[QUEUE] 처리: id=${item.id} op=insert localBookId=${item.localBookId} → 이미 supabaseId=${bookData.supabaseId}, 삭제');
       await _deleteQueueItem(item.id);
-      return;
+      return null;
     }
     final book = _fromData(bookData);
-    // userId가 ""이면(stale _supabase로 생성된 addLocalOnlyBook 등) 현재 세션에서 보정
     final resolvedUserId = book.userId.isNotEmpty
         ? book.userId
         : (Supabase.instance.client.auth.currentUser?.id ?? '');
     if (resolvedUserId.isEmpty) {
       debugPrint('[QUEUE] 처리: id=${item.id} op=insert localBookId=${item.localBookId} → userId 없음(미로그인?), 보존');
-      return;
+      return null;
     }
     final bookToInsert = resolvedUserId != book.userId
         ? book.copyWith(userId: resolvedUserId)
         : book;
     if (resolvedUserId != book.userId) {
-      // Drift에도 보정된 userId 반영
       await (_db.update(_db.books)..where((t) => t.id.equals(item.localBookId)))
           .write(BooksCompanion(userId: Value(resolvedUserId)));
     }
@@ -354,11 +355,9 @@ class BookRepositoryImpl implements BookRepository {
     final supabaseId = row['id'] as String;
     await (_db.update(_db.books)..where((t) => t.id.equals(item.localBookId)))
         .write(BooksCompanion(supabaseId: Value(supabaseId)));
-    if (bookData.coverUrl != null && !bookData.coverUrl!.startsWith('http')) {
-      debugPrint('[QUEUE] 표지경로 불일치 경고: localBookId=${item.localBookId} 신규supabaseId=$supabaseId coverUrl=${bookData.coverUrl} (로컬 경로, 재업로드 필요)');
-    }
     await _deleteQueueItem(item.id);
     debugPrint('[QUEUE] 처리: id=${item.id} op=insert localBookId=${item.localBookId} → 성공 supabaseId=$supabaseId');
+    return (localId: item.localBookId, supabaseId: supabaseId, userId: resolvedUserId);
   }
 
   Future<void> _flushUpdate(SyncQueueData item) async {

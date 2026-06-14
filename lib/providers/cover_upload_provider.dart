@@ -1,8 +1,6 @@
-import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
@@ -40,26 +38,16 @@ class PendingUpload {
 /// state 타입: AsyncValue of List[PendingUpload] (현재 펜딩 큐)
 /// - 온라인: 즉시 업로드 후 public URL 반환.
 /// - 오프라인: 큐에 적재, documents에 JSON 영속화.
-/// - 온라인 복귀: connectivity_plus 이벤트로 자동 flush.
+/// - 온라인 복귀: SyncQueueFlusher가 순서를 보장하며 구동.
+///   1) flushSyncQueue() → 오프라인 책 insert + supabaseId 확보
+///   2) promoteLocalCover() → supabaseId 경로로 표지 업로드
+///   3) flush() → 그 외 나머지 펜딩 처리
 class CoverUploadNotifier extends AsyncNotifier<List<PendingUpload>> {
   final _uploadService = CoverUploadService();
-  StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
 
   @override
   Future<List<PendingUpload>> build() async {
-    ref.onDispose(() => _connectivitySub?.cancel());
-
     final queue = await _loadQueue();
-
-    _connectivitySub = Connectivity().onConnectivityChanged.listen(
-      (List<ConnectivityResult> results) {
-        if (!results.contains(ConnectivityResult.none)) {
-          debugPrint('[COVER] 온라인 복귀 — 펜딩 큐 flush 시작 (${state.value?.length ?? 0}건)');
-          flush();
-        }
-      },
-    );
-
     debugPrint('[COVER] CoverUploadNotifier 초기화 완료 (펜딩: ${queue.length}건)');
     return queue;
   }
@@ -86,6 +74,53 @@ class CoverUploadNotifier extends AsyncNotifier<List<PendingUpload>> {
       state = AsyncData(updated);
       await _saveQueue(updated);
       return null;
+    }
+  }
+
+  /// 오프라인 추가 책의 표지 promote.
+  /// SyncQueueFlusher가 _flushInsert 완료 후 supabaseId를 넘겨 호출한다.
+  /// - localId 기반으로 펜딩 항목을 찾아 supabaseId 경로로 재업로드
+  /// - 업로드 성공 후 updateCoverUrl(supabaseId) → Drift + Supabase 반영
+  Future<void> promoteLocalCover({
+    required int localId,
+    required String supabaseId,
+    required String userId,
+  }) async {
+    final current = state.value ?? [];
+    final item = current
+        .where((e) => e.bookId == localId.toString())
+        .firstOrNull;
+    if (item == null) {
+      debugPrint('[COVER-FIX] promoteLocalCover — localId=$localId 해당 펜딩 없음, 스킵');
+      return;
+    }
+    debugPrint('[COVER-FIX] promoteLocalCover 진입 — localId=$localId supabaseId=$supabaseId');
+
+    final file = File(item.filePath);
+    if (!file.existsSync()) {
+      debugPrint('[COVER-FIX] promoteLocalCover 파일 없음, 큐 제거 — localId=$localId');
+      final remaining = current.where((e) => e.bookId != localId.toString()).toList();
+      state = AsyncData(remaining);
+      await _saveQueue(remaining);
+      return;
+    }
+
+    try {
+      debugPrint('[COVER-FIX] Storage upload 직전 — supabaseId=$supabaseId');
+      final url = await _uploadService.upload(
+        file: file,
+        userId: userId,
+        bookId: supabaseId, // supabaseId 경로: covers/userId/supabaseId.jpg
+      );
+      debugPrint('[COVER-FIX] Storage upload 완료 — supabaseId=$supabaseId url=$url');
+      await ref.read(bookRepositoryProvider).updateCoverUrl(supabaseId, url);
+      final remaining = current.where((e) => e.bookId != localId.toString()).toList();
+      state = AsyncData(remaining);
+      await _saveQueue(remaining);
+      debugPrint('[COVER-FIX] promoteLocalCover 완료 — supabaseId=$supabaseId');
+    } catch (e) {
+      debugPrint('[COVER-FIX] promoteLocalCover 실패 — localId=$localId: $e');
+      // 큐 유지 → 다음 온라인 복귀 시 재시도
     }
   }
 

@@ -1,5 +1,9 @@
 import '../models/book.dart';
 
+/// _flushInsert가 성공적으로 Supabase에 insert하고 supabaseId를 확보한 책 정보.
+/// SyncQueueFlusher → CoverUploadNotifier 간 표지 promote 연결에 사용한다.
+typedef BookInsertResult = ({int localId, String supabaseId, String userId});
+
 /// 화면은 이 인터페이스만 알며 Drift / Supabase 존재를 모른다.
 abstract interface class BookRepository {
   /// 로컬 Drift에서 책 목록 반환.
@@ -21,8 +25,9 @@ abstract interface class BookRepository {
   Future<void> syncFromRemote();
 
   /// sync_queue를 createdAt 오름차순으로 Supabase에 반영하고 성공 항목 삭제.
-  /// 앱 시작 시 온라인이면 1회 + 온라인 복귀 때마다 SyncQueueFlusher가 호출.
-  Future<void> flushSyncQueue();
+  /// 반환값: 이번 flush에서 새로 supabaseId를 획득한 책 목록.
+  /// SyncQueueFlusher가 이 목록으로 표지 promote 순서를 보장한다.
+  Future<List<BookInsertResult>> flushSyncQueue();
 
   /// Storage 업로드 완료 후 cover_url을 Drift + Supabase 양쪽에 반영.
   /// [bookId]는 supabaseId(UUID) 또는 localId 문자열(오프라인 추가 직후).
