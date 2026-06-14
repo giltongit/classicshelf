@@ -24,6 +24,11 @@ abstract interface class BookRepository {
   /// 앱 시작 시 온라인이면 1회 + 온라인 복귀 때마다 SyncQueueFlusher가 호출.
   Future<void> flushSyncQueue();
 
+  /// Storage 업로드 완료 후 cover_url을 Drift + Supabase 양쪽에 반영.
+  /// [bookId]는 supabaseId(UUID) 또는 localId 문자열(오프라인 추가 직후).
+  /// 내부적으로 updateBook과 동일한 낙관적 쓰기 + sync_queue 패턴을 사용한다.
+  Future<void> updateCoverUrl(String bookId, String storageUrl);
+
   // TODO: 검증용 임시 — 5c-2 검증 후 제거.
   Future<int> pendingQueueCount();
   Future<void> debugDumpQueue();

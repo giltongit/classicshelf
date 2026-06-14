@@ -169,6 +169,43 @@ class BookRepositoryImpl implements BookRepository {
   }
 
   @override
+  Future<void> updateCoverUrl(String bookId, String storageUrl) async {
+    debugPrint('[COVER-FIX] updateCoverUrl 진입 — bookId=$bookId storageUrl=$storageUrl');
+
+    // bookId 는 supabaseId(UUID) 또는 localId 문자열
+    final localIdInt = int.tryParse(bookId);
+    debugPrint('[COVER-FIX] 탐색 방법 — ${localIdInt != null ? "localId=$localIdInt" : "supabaseId=$bookId"}');
+
+    final bookData = localIdInt != null
+        ? await (_db.select(_db.books)
+              ..where((t) => t.id.equals(localIdInt)))
+            .getSingleOrNull()
+        : await (_db.select(_db.books)
+              ..where((t) => t.supabaseId.equals(bookId)))
+            .getSingleOrNull();
+
+    debugPrint('[COVER-FIX] Drift 탐색 결과 — ${bookData == null ? "행 없음" : "localId=${bookData.id} supabaseId=${bookData.supabaseId} 현재coverUrl=${bookData.coverUrl}"}');
+
+    if (bookData == null) {
+      debugPrint('[COVER-FIX] 로컬 행 없음 → 스킵');
+      return;
+    }
+
+    // 멱등: 이미 원격 URL이 설정돼 있으면 재처리하지 않음
+    if (bookData.coverUrl != null && bookData.coverUrl!.startsWith('http')) {
+      debugPrint('[COVER-FIX] 이미 원격 URL → 스킵 (coverUrl=${bookData.coverUrl})');
+      return;
+    }
+
+    debugPrint('[COVER-FIX] updateBook 호출 직전 — localId=${bookData.id} supabaseId=${bookData.supabaseId} 새coverUrl=$storageUrl');
+    // updateBook과 동일한 낙관적 쓰기 경로 — Drift 선반영 후 온라인이면 Supabase PATCH,
+    // 오프라인이면 sync_queue 'update' 적재.
+    final book = _fromData(bookData).copyWith(coverUrl: storageUrl);
+    await updateBook(book);
+    debugPrint('[COVER-FIX] updateBook 반환 완료 — bookId=$bookId');
+  }
+
+  @override
   Future<int> pendingQueueCount() async {
     final rows = await _db.select(_db.syncQueue).get();
     return rows.length;

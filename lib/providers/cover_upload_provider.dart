@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../services/cover_upload_service.dart';
+import 'providers.dart';
 
 /// 펜딩 업로드 항목. 오프라인 시 큐에 직렬화하여 저장.
 class PendingUpload {
@@ -91,34 +92,40 @@ class CoverUploadNotifier extends AsyncNotifier<List<PendingUpload>> {
   /// 펜딩 큐 일괄 처리.
   Future<void> flush() async {
     final current = state.value ?? [];
+    debugPrint('[COVER-FIX] flush 진입 — 펜딩 ${current.length}건: ${current.map((e) => e.bookId).toList()}');
     if (current.isEmpty) return;
 
     var remaining = List<PendingUpload>.from(current);
 
     for (final item in List<PendingUpload>.from(remaining)) {
+      debugPrint('[COVER-FIX] 처리 시작 — bookId=${item.bookId} filePath=${item.filePath}');
       final file = File(item.filePath);
       if (!file.existsSync()) {
-        debugPrint('[COVER] 큐 항목 파일 없음, 제거: ${item.filePath}');
+        debugPrint('[COVER-FIX] 파일 없음, 제거: ${item.filePath}');
         remaining.remove(item);
         continue;
       }
       try {
+        debugPrint('[COVER-FIX] Storage upload 호출 직전 — bookId=${item.bookId}');
         final url = await _uploadService.upload(
           file: file,
           userId: item.userId,
           bookId: item.bookId,
         );
-        debugPrint('[COVER] 큐 flush 성공: ${item.bookId} → $url');
+        debugPrint('[COVER-FIX] Storage upload 완료 — bookId=${item.bookId} url=$url');
         remaining.remove(item);
-        // TODO: books 테이블 cover_url 업데이트 (STEP 6 BookRepository에서 처리)
+        debugPrint('[COVER-FIX] updateCoverUrl 호출 직전 — bookId=${item.bookId} url=$url');
+        await ref.read(bookRepositoryProvider).updateCoverUrl(item.bookId, url);
+        debugPrint('[COVER-FIX] updateCoverUrl 반환 — bookId=${item.bookId}');
       } catch (e) {
-        debugPrint('[COVER] 큐 flush 실패: ${item.bookId} — $e');
+        debugPrint('[COVER-FIX] flush 항목 실패 — bookId=${item.bookId} error=$e');
         // 남겨두고 다음 온라인 복귀 시 재시도
       }
     }
 
     state = AsyncData(remaining);
     await _saveQueue(remaining);
+    debugPrint('[COVER-FIX] flush 완료 — 남은 ${remaining.length}건');
   }
 
   // ── 큐 영속화 ──────────────────────────────────────────────────────────────
