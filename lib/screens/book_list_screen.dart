@@ -36,6 +36,11 @@ class BookListScreen extends ConsumerWidget {
             },
           ),
           IconButton(
+            icon: const Icon(Icons.qr_code_scanner),
+            tooltip: '바코드 스캔',
+            onPressed: () => context.push('/scan'),
+          ),
+          IconButton(
             icon: const Icon(Icons.add),
             tooltip: '책 추가',
             onPressed: () => context.push('/add'),

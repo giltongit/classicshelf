@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../models/book.dart';
+import '../models/book_search_result.dart';
 import '../providers/cover_upload_provider.dart';
 import '../providers/providers.dart';
 import '../repositories/book_repository.dart';
@@ -14,7 +15,11 @@ import '../theme/app_theme.dart';
 class AddBookScreen extends ConsumerStatefulWidget {
   /// null이면 신규 추가, 값이 있으면 수정 모드.
   final Book? editBook;
-  const AddBookScreen({super.key, this.editBook});
+
+  /// 바코드 스캔 검색 결과 — 신규 추가 시 폼 자동입력에 사용.
+  final BookSearchResult? searchResult;
+
+  const AddBookScreen({super.key, this.editBook, this.searchResult});
 
   @override
   ConsumerState<AddBookScreen> createState() => _AddBookScreenState();
@@ -44,16 +49,17 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
   void initState() {
     super.initState();
     final b = widget.editBook;
-    _title     = TextEditingController(text: b?.title ?? '');
-    _author    = TextEditingController(text: b?.author ?? '');
-    _isbn      = TextEditingController(text: b?.isbn ?? '');
-    _publisher = TextEditingController(text: b?.publisher ?? '');
-    _year      = TextEditingController(text: b?.year ?? '');
-    _genre     = TextEditingController(text: b?.genre ?? '');
-    _location  = TextEditingController(text: b?.location ?? '');
-    _review    = TextEditingController(text: b?.review ?? '');
+    final s = widget.searchResult;
+    _title     = TextEditingController(text: b?.title     ?? s?.title     ?? '');
+    _author    = TextEditingController(text: b?.author    ?? s?.author    ?? '');
+    _isbn      = TextEditingController(text: b?.isbn      ?? s?.isbn      ?? '');
+    _publisher = TextEditingController(text: b?.publisher ?? s?.publisher ?? '');
+    _year      = TextEditingController(text: b?.year      ?? s?.year      ?? '');
+    _genre     = TextEditingController(text: b?.genre     ?? s?.genre     ?? '');
+    _location  = TextEditingController(text: b?.location  ?? '');
+    _review    = TextEditingController(text: b?.review    ?? '');
     _status    = b?.status ?? 'owned';
-    _coverUrl  = b?.coverUrl;
+    _coverUrl  = b?.coverUrl ?? s?.thumbnailUrl;
   }
 
   @override
@@ -82,7 +88,6 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
   }
 
   String? _nonEmpty(String key) {
-    // TextEditingController에서 빈 문자열이면 null로 변환
     final v = switch (key) {
       'isbn'      => _isbn.text.trim(),
       'publisher' => _publisher.text.trim(),
@@ -97,6 +102,21 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
 
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
+
+    // ISBN 중복 체크 (신규 추가 시)
+    if (!_isEdit) {
+      final isbn = _nonEmpty('isbn');
+      if (isbn != null) {
+        final repo = ref.read(bookRepositoryProvider);
+        final books = await repo.getBooks();
+        final dup = books.where((b) => b.isbn == isbn).firstOrNull;
+        if (dup != null && mounted) {
+          await _showDuplicateDialog(dup);
+          return;
+        }
+      }
+    }
+
     setState(() => _saving = true);
 
     try {
@@ -124,7 +144,7 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
       } else {
         // 신규 추가: Supabase가 uuid 생성 → addBook 반환값에서 supabaseId/localId 확보
         Book created = await repo.addBook(Book(
-          userId: userId,
+          userId:    userId,
           title:     _title.text.trim(),
           author:    _author.text.trim(),
           isbn:      _nonEmpty('isbn'),
@@ -134,6 +154,7 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
           location:  _nonEmpty('location'),
           review:    _nonEmpty('review'),
           status:    _status,
+          coverUrl:  _coverUrl, // thumbnailUrl(scan) 또는 null
         ));
         debugPrint('[SAVE] addBook 반환: localId=${created.localId} supabaseId=${created.supabaseId}');
 
@@ -159,6 +180,69 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+  }
+
+  Future<void> _showDuplicateDialog(Book existing) async {
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.info_outline_rounded, color: AppColors.gold, size: 20),
+            SizedBox(width: 8),
+            Text('이미 등록된 책'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('같은 ISBN의 책이 이미 등록되어 있습니다.',
+                style: TextStyle(color: AppColors.muted, fontSize: 13)),
+            const SizedBox(height: 14),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.surface2,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: AppColors.dim),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(existing.title,
+                      style: const TextStyle(
+                          color: AppColors.cream,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 4),
+                  Text(existing.author,
+                      style: const TextStyle(
+                          color: AppColors.muted, fontSize: 12)),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => ctx.pop(),
+            child: const Text('확인'),
+          ),
+          TextButton(
+            onPressed: () {
+              ctx.pop();
+              if (mounted) {
+                context.pop();
+                context.push('/books/${existing.localId}');
+              }
+            },
+            child: const Text('기존 책 보기',
+                style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
   }
 
   /// 표지 업로드 → coverUrl 업데이트 → 갱신된 Book 반환.
