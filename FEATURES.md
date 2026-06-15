@@ -179,6 +179,8 @@ GoRouter (lib/router/app_router.dart)
 
 ## 5. 바코드 스캔 (ISBN)
 
+> ⚠️ 아래는 legacy `bookshelf` 구현이다. mylibrary는 이 스캔 화면을 명시적 상태머신으로 재설계했고, 여기 적힌 `noDuplicates` · `_busy` · `_reset(stop→start)` 패턴은 mylibrary에서 폐기됐다. 최신 설계는 `공통_아키텍처.md` §8 참조.
+
 [lib/screens/scan_screen.dart](lib/screens/scan_screen.dart) + `mobile_scanner` 7.x
 
 ### 동작
