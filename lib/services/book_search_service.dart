@@ -4,6 +4,21 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 import '../models/book_search_result.dart';
 
+/// 네트워크 연결 실패 또는 타임아웃.
+class BookSearchNetworkException implements Exception {
+  const BookSearchNetworkException(this.message);
+  final String message;
+  @override
+  String toString() => message;
+}
+
+/// API 요청 한도 초과 (HTTP 429).
+class BookSearchRateLimitException implements Exception {
+  const BookSearchRateLimitException();
+  @override
+  String toString() => 'BookSearchRateLimitException';
+}
+
 class BookSearchService {
   static const _naverBase = 'https://openapi.naver.com/v1/search';
   static const _googleBase = 'https://www.googleapis.com/books/v1/volumes';
@@ -25,8 +40,11 @@ class BookSearchService {
     try {
       final result = await _naverByISBN(clean);
       if (result != null) return result;
-    } catch (_) {}
+    } catch (_) {
+      // 네이버 실패는 무시하고 Google 폴백으로 진행
+    }
 
+    // Google 폴백 (예외는 호출자에게 전파)
     final results = await _searchGoogle('isbn:$clean', maxResults: 1);
     return results.isEmpty ? null : results.first;
   }
@@ -110,6 +128,9 @@ class BookSearchService {
 
     try {
       final resp = await http.get(uri).timeout(const Duration(seconds: 10));
+      if (resp.statusCode == 429) {
+        throw const BookSearchRateLimitException();
+      }
       if (resp.statusCode != 200) {
         throw Exception('Google Books error (${resp.statusCode})');
       }
@@ -118,10 +139,12 @@ class BookSearchService {
       return items
           .map((e) => BookSearchResult.fromJson(e as Map<String, dynamic>))
           .toList();
+    } on BookSearchRateLimitException {
+      rethrow;
     } on SocketException {
-      throw Exception('네트워크에 연결할 수 없습니다');
+      throw const BookSearchNetworkException('네트워크에 연결할 수 없습니다');
     } on TimeoutException {
-      throw Exception('요청 시간이 초과되었습니다');
+      throw const BookSearchNetworkException('요청 시간이 초과되었습니다');
     }
   }
 }

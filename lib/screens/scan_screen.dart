@@ -3,10 +3,26 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
+import '../models/book_search_result.dart';
 import '../services/book_search_service.dart';
 import '../theme/app_theme.dart';
 
-enum _ScanState { scanning, processing, notFound }
+/// 스캔 화면의 명시적 상태 머신.
+/// 불변식: onDetect는 [_Phase.scanning] 에서만 처리된다.
+/// 락(_lastProcessedIsbn) 해제(null)는 "다시 스캔" 버튼([_rescan]) 단 한 곳에서만.
+enum _Phase {
+  // detect 처리 가능한 유일 상태
+  scanning,
+  // 처리/이동 중 (detect 무시)
+  processing,
+  navigatingToAdd, // /add 체류 (검색결과 add · 직접입력 add 공통)
+  // resultCard 군 (detect 무시, 카드 표시, 락 유지)
+  cardNotFound,
+  cardNetworkError,
+  cardRateLimited,
+  cardCancelled,
+  cardError,
+}
 
 class ScanScreen extends StatefulWidget {
   const ScanScreen({super.key});
@@ -23,20 +39,20 @@ class _ScanScreenState extends State<ScanScreen>
   StreamSubscription<BarcodeCapture>? _barcodeSub;
 
   final _isbnCtrl = TextEditingController();
-  _ScanState _state = _ScanState.scanning;
+  _Phase _phase = _Phase.scanning;
   String? _scannedIsbn;
   bool _torchOn = false;
-  bool _busy = false; // prevents duplicate detections
+  String? _lastProcessedIsbn; // 앱레벨 dedup: 마지막으로 처리 시작한 ISBN
 
   @override
   void initState() {
     super.initState();
+    // 제약1: autoStart=true(기본)에 기동을 맡긴다. 수동 _camera.start() 금지.
+    // 제약2: detectionSpeed 미지정 = DetectionSpeed.normal (noDuplicates 금지).
     _camera = MobileScannerController(
-      detectionSpeed: DetectionSpeed.noDuplicates,
       facing: CameraFacing.back,
     );
     _barcodeSub = _camera.barcodes.listen(_onDetect);
-    unawaited(_camera.start());
     _sweepCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1800),
@@ -49,6 +65,7 @@ class _ScanScreenState extends State<ScanScreen>
 
   @override
   void dispose() {
+    // teardown 중 죽은 state로 detect가 들어오지 않도록 구독부터 취소.
     _barcodeSub?.cancel();
     _camera.dispose();
     _sweepCtrl.dispose();
@@ -56,189 +73,243 @@ class _ScanScreenState extends State<ScanScreen>
     super.dispose();
   }
 
-  // ── Barcode detected ──────────────────────────────────────
-
-  Future<void> _onDetect(BarcodeCapture capture) async {
-    if (_busy || _state != _ScanState.scanning) return;
-    final raw = capture.barcodes.firstOrNull?.rawValue;
-    if (raw == null) return;
-
-    _busy = true;
-    await _processISBN(raw);
+  // ── 상태 전이 단일 지점 ────────────────────────────────────
+  // 락(_lastProcessedIsbn)은 여기서 건드리지 않는다.
+  // 해제는 _rescan, 설정은 _startProcessing 에서만.
+  void _to(_Phase next) {
+    setState(() => _phase = next);
+    if (next == _Phase.scanning) {
+      _sweepCtrl.repeat(reverse: true);
+    } else {
+      _sweepCtrl.stop();
+    }
   }
 
-  Future<void> _processISBN(String raw) async {
-    final isbn = raw.replaceAll(RegExp(r'[^0-9X]'), '');
-    if (isbn.length != 13 && isbn.length != 10) {
-      _busy = false;
-      return; // not a book barcode, keep scanning
+  bool get _isCard => _phase.index >= _Phase.cardNotFound.index;
+
+  String get _cardMessage {
+    switch (_phase) {
+      case _Phase.cardNotFound:
+        return '책을 찾을 수 없습니다';
+      case _Phase.cardNetworkError:
+        return '네트워크가 연결되어 있지 않습니다';
+      case _Phase.cardRateLimited:
+        return '검색 한도를 초과했습니다\n잠시 후 다시 시도해 주세요';
+      case _Phase.cardCancelled:
+        return '저장하지 않았습니다';
+      case _Phase.cardError:
+        return '일시적인 오류가 발생했습니다';
+      default:
+        return '';
     }
+  }
 
-    await _camera.stop();
-    _sweepCtrl.stop();
-    setState(() {
-      _state = _ScanState.processing;
-      _scannedIsbn = isbn;
-    });
+  String _normalize(String? raw) =>
+      raw?.replaceAll(RegExp(r'[^0-9X]'), '') ?? '';
 
+  bool _isValidIsbn(String s) => s.length == 13 || s.length == 10;
+
+  // ── Barcode detected (유일하게 _phase==scanning 에서만 처리) ──
+  void _onDetect(BarcodeCapture capture) {
+    if (_phase != _Phase.scanning) return; // 단일 가드 (구 _busy 대체)
+    final isbn = _normalize(capture.barcodes.firstOrNull?.rawValue);
+    if (!_isValidIsbn(isbn)) return; // 책 바코드 아님 → 계속 스캔
+    if (isbn == _lastProcessedIsbn) return; // dedup: 같은 책 화면 잔존
+    _startProcessing(isbn);
+  }
+
+  // 락을 "거는" 유일 지점 (onDetect · 하단바 수동검색 공통).
+  void _startProcessing(String isbn) {
+    _lastProcessedIsbn = isbn; // 락 ON / 갱신
+    _scannedIsbn = isbn;
+    _to(_Phase.processing); // sync 전이 → 이후 detect 차단
+    _runSearch(isbn); // fire-and-forget
+  }
+
+  Future<void> _runSearch(String isbn) async {
     try {
       final result = await BookSearchService().searchByISBN(isbn);
       if (!mounted) return;
       if (result != null) {
-        // await the push so _reset() runs after user returns from /add
-        await context.push('/add', extra: result);
-        if (mounted) _reset();
+        await _goToAdd(result);
       } else {
-        setState(() => _state = _ScanState.notFound);
+        _to(_Phase.cardNotFound);
       }
-    } catch (e) {
-      if (mounted) setState(() => _state = _ScanState.notFound);
-    } finally {
-      _busy = false;
+    } on BookSearchRateLimitException {
+      if (mounted) _to(_Phase.cardRateLimited);
+    } on BookSearchNetworkException {
+      if (mounted) _to(_Phase.cardNetworkError);
+    } catch (_) {
+      if (mounted) _to(_Phase.cardError);
     }
   }
 
-  Future<void> _reset() async {
-    setState(() {
-      _state = _ScanState.scanning;
-      _scannedIsbn = null;
-    });
-    _sweepCtrl.repeat(reverse: true);
-    // stop → start clears the noDuplicates detection cache
-    await _camera.stop();
-    await _camera.start();
+  // 검색결과 add. 저장/취소 모두 락 유지(방금 처리한 책 자동 재검색 차단).
+  Future<void> _goToAdd(BookSearchResult result) async {
+    _to(_Phase.navigatingToAdd);
+    final saved = await context.push<bool>('/add', extra: result);
+    if (!mounted) return;
+    _to(saved == true ? _Phase.scanning : _Phase.cardCancelled);
   }
 
-  Future<void> _manualLookup() async {
-    final isbn = _isbnCtrl.text.trim();
-    if (isbn.isEmpty) return;
-    await _processISBN(isbn);
+  // 직접입력 add. /add 와 동일하게 저장/취소 구분, 둘 다 락 유지.
+  Future<void> _goToManualAdd() async {
+    _to(_Phase.navigatingToAdd);
+    final saved = await context.push<bool>('/add');
+    if (!mounted) return;
+    _to(saved == true ? _Phase.scanning : _Phase.cardCancelled);
+  }
+
+  // 락을 "푸는" 유일 지점.
+  void _rescan() {
+    _lastProcessedIsbn = null;
+    _scannedIsbn = null;
+    _to(_Phase.scanning);
+  }
+
+  // 하단 수동 입력바.
+  void _manualLookup() {
+    if (_phase == _Phase.processing || _phase == _Phase.navigatingToAdd) return;
+    final isbn = _normalize(_isbnCtrl.text.trim());
+    if (!_isValidIsbn(isbn)) return;
+    _startProcessing(isbn);
   }
 
   // ── Build ─────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      appBar: AppBar(
+    return PopScope(
+      // 제약/요구(d): 어떤 _phase에서도 back은 항상 스캔 화면을 벗어난다(가로채지 않음).
+      canPop: true,
+      child: Scaffold(
         backgroundColor: Colors.black,
-        foregroundColor: Colors.white,
-        title: const Text('ISBN 바코드 스캔',
-            style: TextStyle(color: AppColors.gold)),
-        actions: [
-          IconButton(
-            icon: Icon(
-              _torchOn ? Icons.flash_on : Icons.flash_off,
-              color: _torchOn ? AppColors.gold : AppColors.muted,
+        appBar: AppBar(
+          backgroundColor: Colors.black,
+          foregroundColor: Colors.white,
+          title: const Text('ISBN 바코드 스캔',
+              style: TextStyle(color: AppColors.gold)),
+          actions: [
+            IconButton(
+              icon: Icon(
+                _torchOn ? Icons.flash_on : Icons.flash_off,
+                color: _torchOn ? AppColors.gold : AppColors.muted,
+              ),
+              onPressed: () {
+                _camera.toggleTorch();
+                setState(() => _torchOn = !_torchOn);
+              },
             ),
-            onPressed: () {
-              _camera.toggleTorch();
-              setState(() => _torchOn = !_torchOn);
-            },
+          ],
+          bottom: PreferredSize(
+            preferredSize: const Size.fromHeight(1),
+            child: Container(height: 1, color: AppColors.dim),
           ),
-        ],
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(1),
-          child: Container(height: 1, color: AppColors.dim),
         ),
-      ),
-      body: Column(
-        children: [
-          Expanded(
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final fw =
-                    math.min(constraints.maxWidth * 0.82, 300.0);
-                const fh = 120.0;
-                final fl = (constraints.maxWidth - fw) / 2;
-                final ft = (constraints.maxHeight - fh) / 2 - 32;
-                final frame = Rect.fromLTWH(fl, ft, fw, fh);
+        body: Column(
+          children: [
+            Expanded(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final fw = math.min(constraints.maxWidth * 0.82, 300.0);
+                  const fh = 120.0;
+                  final fl = (constraints.maxWidth - fw) / 2;
+                  final ft = (constraints.maxHeight - fh) / 2 - 32;
+                  final frame = Rect.fromLTWH(fl, ft, fw, fh);
 
-                return Stack(
-                  children: [
-                    // Camera
-                    MobileScanner(
-                      controller: _camera,
-                    ),
+                  // 제약3: MobileScanner는 조건 없이 항상 트리에 존재.
+                  return Stack(
+                    children: [
+                      // Camera — 조건부 렌더 없음, 항상 트리 첫 자식
+                      MobileScanner(
+                        controller: _camera,
+                        errorBuilder: (context, error) {
+                          // controllerInitializing은 value.error로 오지 않음;
+                          // 다른 에러(permissionDenied 등)는 검은 화면 유지.
+                          return const ColoredBox(color: Colors.black);
+                        },
+                      ),
 
-                    // Dark overlay with cutout
-                    CustomPaint(
-                      size: Size(
-                          constraints.maxWidth, constraints.maxHeight),
-                      painter: _OverlayPainter(frame: frame),
-                    ),
+                      // Dark overlay with cutout
+                      CustomPaint(
+                        size: Size(
+                            constraints.maxWidth, constraints.maxHeight),
+                        painter: _OverlayPainter(frame: frame),
+                      ),
 
-                    // Corner markers
-                    ..._corners(frame),
+                      // Corner markers
+                      ..._corners(frame),
 
-                    // Sweep line (scanning state only)
-                    if (_state == _ScanState.scanning)
-                      AnimatedBuilder(
-                        animation: _sweepAnim,
-                        builder: (_, _) => Positioned(
-                          left: frame.left + 4,
-                          top: frame.top +
-                              _sweepAnim.value * (frame.height - 2),
-                          width: frame.width - 8,
-                          height: 2,
-                          child: Container(
-                            decoration: const BoxDecoration(
-                              gradient: LinearGradient(
-                                colors: [
-                                  Colors.transparent,
-                                  AppColors.gold,
-                                  Colors.transparent,
-                                ],
+                      // Sweep line (scanning state only)
+                      if (_phase == _Phase.scanning)
+                        AnimatedBuilder(
+                          animation: _sweepAnim,
+                          builder: (_, _) => Positioned(
+                            left: frame.left + 4,
+                            top: frame.top +
+                                _sweepAnim.value * (frame.height - 2),
+                            width: frame.width - 8,
+                            height: 2,
+                            child: Container(
+                              decoration: const BoxDecoration(
+                                gradient: LinearGradient(
+                                  colors: [
+                                    Colors.transparent,
+                                    AppColors.gold,
+                                    Colors.transparent,
+                                  ],
+                                ),
                               ),
                             ),
                           ),
                         ),
-                      ),
 
-                    // Hint text below frame
-                    if (_state == _ScanState.scanning)
-                      Positioned(
-                        top: frame.bottom + 20,
-                        left: 0,
-                        right: 0,
-                        child: const Text(
-                          '바코드를 스캔 영역에 맞춰주세요',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                              color: AppColors.muted, fontSize: 13),
+                      // Hint text below frame
+                      if (_phase == _Phase.scanning)
+                        Positioned(
+                          top: frame.bottom + 20,
+                          left: 0,
+                          right: 0,
+                          child: const Text(
+                            '바코드를 스캔 영역에 맞춰주세요',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                                color: AppColors.muted, fontSize: 13),
+                          ),
                         ),
-                      ),
 
-                    // Processing overlay
-                    if (_state == _ScanState.processing)
-                      const _ProcessingOverlay(),
+                      // Processing overlay
+                      if (_phase == _Phase.processing)
+                        const _ProcessingOverlay(),
 
-                    // Not-found card
-                    if (_state == _ScanState.notFound)
-                      Positioned(
-                        top: frame.bottom + 16,
-                        left: 24,
-                        right: 24,
-                        child: _NotFoundCard(
-                          isbn: _scannedIsbn,
-                          onRetry: _reset,
-                          onManual: () => context.push('/add'),
+                      // Result card (notFound / network / 429 / cancelled / error)
+                      if (_isCard)
+                        Positioned(
+                          top: frame.bottom + 16,
+                          left: 24,
+                          right: 24,
+                          child: _NotFoundCard(
+                            isbn: _scannedIsbn,
+                            message: _cardMessage,
+                            onRetry: _rescan,
+                            onManual: _goToManualAdd,
+                          ),
                         ),
-                      ),
-                  ],
-                );
-              },
+                    ],
+                  );
+                },
+              ),
             ),
-          ),
 
-          // Manual ISBN input bar
-          _ManualInputBar(
-            controller: _isbnCtrl,
-            onSearch: _manualLookup,
-            enabled: _state != _ScanState.processing,
-          ),
-        ],
+            // Manual ISBN input bar
+            _ManualInputBar(
+              controller: _isbnCtrl,
+              onSearch: _manualLookup,
+              enabled: _phase != _Phase.processing &&
+                  _phase != _Phase.navigatingToAdd,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -346,14 +417,18 @@ class _ProcessingOverlay extends StatelessWidget {
   }
 }
 
-// ── Not found card ────────────────────────────────────────────
+// ── Result card (검색실패/네트워크/429/취소/오류 공통) ──────────
 
 class _NotFoundCard extends StatelessWidget {
   final String? isbn;
+  final String message;
   final VoidCallback onRetry;
   final VoidCallback onManual;
   const _NotFoundCard(
-      {this.isbn, required this.onRetry, required this.onManual});
+      {this.isbn,
+      required this.message,
+      required this.onRetry,
+      required this.onManual});
 
   @override
   Widget build(BuildContext context) {
@@ -370,10 +445,12 @@ class _NotFoundCard extends StatelessWidget {
           const Icon(Icons.search_off_rounded,
               color: AppColors.muted, size: 32),
           const SizedBox(height: 10),
-          const Text('책 정보를 찾을 수 없습니다',
-              style: TextStyle(
-                  color: AppColors.cream,
-                  fontWeight: FontWeight.w600)),
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+                color: AppColors.cream, fontWeight: FontWeight.w600),
+          ),
           if (isbn != null) ...[
             const SizedBox(height: 4),
             Text('ISBN: $isbn',

@@ -167,7 +167,7 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
       }
 
       ref.invalidate(booksProvider);
-      if (mounted) context.pop();
+      if (mounted) context.pop(true);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
