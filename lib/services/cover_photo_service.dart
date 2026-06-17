@@ -36,7 +36,7 @@ class CoverPhotoService {
     debugPrint('[COVER] tmpDir: ${dir.path}');
     final cacheDir = Directory('${dir.path}/covers');
     await cacheDir.create(recursive: true);
-    final outPath = '${cacheDir.path}/$bookId.jpg';
+    final outPath = '${cacheDir.path}/$bookId.webp';
 
     debugPrint('[COVER] 리사이즈 시작: ${source.absolute.path} → $outPath');
 
@@ -46,8 +46,8 @@ class CoverPhotoService {
         outPath,
         minWidth: 600,
         minHeight: 800,
-        quality: 85,
-        format: CompressFormat.jpeg,
+        quality: 75,
+        format: CompressFormat.webp,
       );
 
       debugPrint('[COVER] compressAndGetFile 반환: ${result?.path ?? 'null'}');

@@ -22,7 +22,7 @@ class CoverUploadService {
     required String bookId,
   }) async {
     // from('covers') 가 버킷을 지정하므로 path 에는 버킷명 불포함
-    final path = '$userId/$bookId.jpg';
+    final path = '$userId/$bookId.webp';
     final fileSize = await file.length();
     debugPrint('[COVER] upload 진입 — bucket: covers, path: $path, size: ${(fileSize / 1024).toStringAsFixed(1)} KB');
 
@@ -31,7 +31,7 @@ class CoverUploadService {
         path,
         file,
         fileOptions: const FileOptions(
-          contentType: 'image/jpeg',
+          contentType: 'image/webp',
           upsert: true,
         ),
       );
