@@ -212,24 +212,6 @@ class BookRepositoryImpl implements BookRepository {
   }
 
   @override
-  Future<void> debugDumpQueue() async {
-    final rows = await _db.select(_db.syncQueue).get();
-    debugPrint('[QUEUE] === 현재 ${rows.length}건 ===');
-    for (final r in rows) {
-      debugPrint(
-          '[QUEUE]  id=${r.id} op=${r.operation} localBookId=${r.localBookId} createdAt=${r.createdAt}');
-    }
-  }
-
-  // TODO: 검증용 임시 — 5c-2 검증 후 제거.
-  @override
-  Future<void> clearSyncQueue() async {
-    final deleted = await (_db.delete(_db.syncQueue)).go();
-    debugPrint('[QUEUE] 큐 전체 삭제: $deleted건');
-  }
-
-  // TODO: 검증용 임시 — 5c-2 검증 후 제거.
-  @override
   Future<void> reconcileLocalOnlyToRemote() async {
     final uid = Supabase.instance.client.auth.currentUser?.id;
     if (uid == null) {

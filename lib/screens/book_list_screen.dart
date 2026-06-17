@@ -20,21 +20,6 @@ class BookListScreen extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('내 서재'),
         actions: [
-          // TODO: 검증용 임시 버튼들 — 5c-2 검증 후 제거.
-          IconButton(
-            icon: const Icon(Icons.storage_outlined),
-            tooltip: '큐 상태 (테스트)',
-            onPressed: () async {
-              await ref.read(bookRepositoryProvider).debugDumpQueue();
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.delete_sweep_outlined),
-            tooltip: '큐 초기화 (테스트)',
-            onPressed: () async {
-              await ref.read(bookRepositoryProvider).clearSyncQueue();
-            },
-          ),
           IconButton(
             icon: const Icon(Icons.qr_code_scanner),
             tooltip: '바코드 스캔',

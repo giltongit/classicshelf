@@ -34,10 +34,7 @@ abstract interface class BookRepository {
   /// 내부적으로 updateBook과 동일한 낙관적 쓰기 + sync_queue 패턴을 사용한다.
   Future<void> updateCoverUrl(String bookId, String storageUrl);
 
-  // TODO: 검증용 임시 — 5c-2 검증 후 제거.
   Future<int> pendingQueueCount();
-  Future<void> debugDumpQueue();
-  Future<void> clearSyncQueue();
 
   /// 로컬에 supabaseId가 있으나 원격에 없는 행을 동일 uuid로 재삽입.
   /// 원격에 이미 있는 행은 건드리지 않는다(보수적).
