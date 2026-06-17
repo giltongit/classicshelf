@@ -144,6 +144,15 @@ class BookRepositoryImpl implements BookRepository {
     if (await _isOnline()) {
       try {
         await Supabase.instance.client.from('books').delete().eq('id', book.supabaseId!);
+        final storagePath = _coverStoragePath(book.coverUrl);
+        if (storagePath != null) {
+          try {
+            await Supabase.instance.client.storage.from('covers').remove([storagePath]);
+            debugPrint('[DELETE] Storage 표지 삭제: $storagePath');
+          } catch (e) {
+            debugPrint('[DELETE] Storage 표지 삭제 실패(무시): $e');
+          }
+        }
       } catch (e) {
         debugPrint('[QUEUE] deleteBook Supabase 실패: $e');
         await _enqueue(book.localId!, 'delete', book);
@@ -376,6 +385,15 @@ class BookRepositoryImpl implements BookRepository {
       return;
     }
     await Supabase.instance.client.from('books').delete().eq('id', supabaseId);
+    final storagePath = _coverStoragePath(payload['cover_url'] as String?);
+    if (storagePath != null) {
+      try {
+        await Supabase.instance.client.storage.from('covers').remove([storagePath]);
+        debugPrint('[DELETE] Storage 표지 삭제(큐): $storagePath');
+      } catch (e) {
+        debugPrint('[DELETE] Storage 표지 삭제 실패(큐, 무시): $e');
+      }
+    }
     await _deleteQueueItem(item.id);
     debugPrint('[QUEUE] 처리: id=${item.id} op=delete → 성공 supabaseId=$supabaseId');
   }
@@ -385,6 +403,17 @@ class BookRepositoryImpl implements BookRepository {
   }
 
   // ── 내부 헬퍼 ─────────────────────────────────────────────────────────────
+
+  /// cover_url → Storage 경로 파싱.
+  /// `.../object/public/covers/{userId}/{id}.{ext}` → `{userId}/{id}.{ext}`
+  /// 외부 URL / null / 패턴 불일치 → null (remove 건너뜀)
+  String? _coverStoragePath(String? coverUrl) {
+    if (coverUrl == null) return null;
+    const marker = '/object/public/covers/';
+    final idx = coverUrl.indexOf(marker);
+    if (idx == -1) return null;
+    return coverUrl.substring(idx + marker.length);
+  }
 
   Future<bool> _isOnline() async {
     final results = await Connectivity().checkConnectivity();
@@ -409,6 +438,7 @@ class BookRepositoryImpl implements BookRepository {
       return jsonEncode({
         'local_book_id': book.localId,
         'supabase_id': book.supabaseId,
+        if (book.coverUrl != null) 'cover_url': book.coverUrl,
       });
     }
     return jsonEncode({
