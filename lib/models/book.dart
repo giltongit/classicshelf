@@ -23,6 +23,10 @@ class Book {
   final String? publisher;
   final String? location;
   final bool priorityRead;
+  final bool isRead;
+  final String medium;
+  final String? language;
+  final String? callNumber;
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
@@ -43,6 +47,10 @@ class Book {
     this.publisher,
     this.location,
     this.priorityRead = false,
+    this.isRead = false,
+    this.medium = 'paper',
+    this.language,
+    this.callNumber,
     this.createdAt,
     this.updatedAt,
   });
@@ -64,6 +72,10 @@ class Book {
     String? publisher,
     String? location,
     bool? priorityRead,
+    bool? isRead,
+    String? medium,
+    String? language,
+    String? callNumber,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) =>
@@ -84,6 +96,10 @@ class Book {
         publisher: publisher ?? this.publisher,
         location: location ?? this.location,
         priorityRead: priorityRead ?? this.priorityRead,
+        isRead: isRead ?? this.isRead,
+        medium: medium ?? this.medium,
+        language: language ?? this.language,
+        callNumber: callNumber ?? this.callNumber,
         createdAt: createdAt ?? this.createdAt,
         updatedAt: updatedAt ?? this.updatedAt,
       );
@@ -106,6 +122,10 @@ class Book {
         if (publisher != null) 'publisher': publisher,
         if (location != null) 'location': location,
         'priority_read': priorityRead,
+        'is_read': isRead,
+        'medium': medium,
+        if (language != null) 'language': language,
+        if (callNumber != null) 'call_number': callNumber,
       };
 
   /// Supabase UPDATE 페이로드. updated_at을 수동 갱신(트리거 없음).
@@ -123,6 +143,10 @@ class Book {
         'publisher': publisher,
         'location': location,
         'priority_read': priorityRead,
+        'is_read': isRead,
+        'medium': medium,
+        'language': language,
+        'call_number': callNumber,
         'updated_at': DateTime.now().toUtc().toIso8601String(),
       };
 
@@ -144,6 +168,10 @@ class Book {
         publisher: json['publisher'] as String?,
         location: json['location'] as String?,
         priorityRead: (json['priority_read'] as bool?) ?? false,
+        isRead: (json['is_read'] as bool?) ?? false,
+        medium: (json['medium'] as String?) ?? 'paper',
+        language: json['language'] as String?,
+        callNumber: json['call_number'] as String?,
         createdAt: _parseDateTime(json['created_at']),
         updatedAt: _parseDateTime(json['updated_at']),
       );

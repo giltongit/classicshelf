@@ -36,9 +36,12 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
   late final TextEditingController _year;
   late final TextEditingController _genre;
   late final TextEditingController _location;
+  late final TextEditingController _callNumber;
   late final TextEditingController _review;
 
   late String _status;
+  bool _isRead = false;
+  String _medium = 'paper';
   File? _localCoverFile;
   String? _coverUrl;
   bool _saving = false;
@@ -50,16 +53,19 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
     super.initState();
     final b = widget.editBook;
     final s = widget.searchResult;
-    _title     = TextEditingController(text: b?.title     ?? s?.title     ?? '');
-    _author    = TextEditingController(text: b?.author    ?? s?.author    ?? '');
-    _isbn      = TextEditingController(text: b?.isbn      ?? s?.isbn      ?? '');
-    _publisher = TextEditingController(text: b?.publisher ?? s?.publisher ?? '');
-    _year      = TextEditingController(text: b?.year      ?? s?.year      ?? '');
-    _genre     = TextEditingController(text: b?.genre     ?? s?.genre     ?? '');
-    _location  = TextEditingController(text: b?.location  ?? '');
-    _review    = TextEditingController(text: b?.review    ?? '');
-    _status    = b?.status ?? 'owned';
-    _coverUrl  = b?.coverUrl ?? s?.thumbnailUrl;
+    _title      = TextEditingController(text: b?.title     ?? s?.title     ?? '');
+    _author     = TextEditingController(text: b?.author    ?? s?.author    ?? '');
+    _isbn       = TextEditingController(text: b?.isbn      ?? s?.isbn      ?? '');
+    _publisher  = TextEditingController(text: b?.publisher ?? s?.publisher ?? '');
+    _year       = TextEditingController(text: b?.year      ?? s?.year      ?? '');
+    _genre      = TextEditingController(text: b?.genre     ?? s?.genre     ?? '');
+    _location   = TextEditingController(text: b?.location  ?? '');
+    _callNumber = TextEditingController(text: b?.callNumber ?? '');
+    _review     = TextEditingController(text: b?.review    ?? '');
+    _status     = b?.status ?? 'owned';
+    _isRead     = b?.isRead ?? false;
+    _medium     = b?.medium ?? 'paper';
+    _coverUrl   = b?.coverUrl ?? s?.thumbnailUrl;
   }
 
   @override
@@ -71,6 +77,7 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
     _year.dispose();
     _genre.dispose();
     _location.dispose();
+    _callNumber.dispose();
     _review.dispose();
     super.dispose();
   }
@@ -89,13 +96,14 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
 
   String? _nonEmpty(String key) {
     final v = switch (key) {
-      'isbn'      => _isbn.text.trim(),
-      'publisher' => _publisher.text.trim(),
-      'year'      => _year.text.trim(),
-      'genre'     => _genre.text.trim(),
-      'location'  => _location.text.trim(),
-      'review'    => _review.text.trim(),
-      _           => '',
+      'isbn'       => _isbn.text.trim(),
+      'publisher'  => _publisher.text.trim(),
+      'year'       => _year.text.trim(),
+      'genre'      => _genre.text.trim(),
+      'location'   => _location.text.trim(),
+      'callNumber' => _callNumber.text.trim(),
+      'review'     => _review.text.trim(),
+      _            => '',
     };
     return v.isEmpty ? null : v;
   }
@@ -126,16 +134,19 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
       if (_isEdit) {
         // 수정 모드
         Book result = await repo.updateBook(widget.editBook!.copyWith(
-          title:     _title.text.trim(),
-          author:    _author.text.trim(),
-          isbn:      _nonEmpty('isbn'),
-          publisher: _nonEmpty('publisher'),
-          year:      _nonEmpty('year'),
-          genre:     _nonEmpty('genre'),
-          location:  _nonEmpty('location'),
-          review:    _nonEmpty('review'),
-          status:    _status,
-          coverUrl:  _coverUrl,
+          title:      _title.text.trim(),
+          author:     _author.text.trim(),
+          isbn:       _nonEmpty('isbn'),
+          publisher:  _nonEmpty('publisher'),
+          year:       _nonEmpty('year'),
+          genre:      _nonEmpty('genre'),
+          location:   _nonEmpty('location'),
+          callNumber: _nonEmpty('callNumber'),
+          review:     _nonEmpty('review'),
+          status:     _status,
+          isRead:     _isRead,
+          medium:     _medium,
+          coverUrl:   _coverUrl,
         ));
 
         if (_localCoverFile != null) {
@@ -144,17 +155,20 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
       } else {
         // 신규 추가: Supabase가 uuid 생성 → addBook 반환값에서 supabaseId/localId 확보
         Book created = await repo.addBook(Book(
-          userId:    userId,
-          title:     _title.text.trim(),
-          author:    _author.text.trim(),
-          isbn:      _nonEmpty('isbn'),
-          publisher: _nonEmpty('publisher'),
-          year:      _nonEmpty('year'),
-          genre:     _nonEmpty('genre'),
-          location:  _nonEmpty('location'),
-          review:    _nonEmpty('review'),
-          status:    _status,
-          coverUrl:  _coverUrl, // thumbnailUrl(scan) 또는 null
+          userId:     userId,
+          title:      _title.text.trim(),
+          author:     _author.text.trim(),
+          isbn:       _nonEmpty('isbn'),
+          publisher:  _nonEmpty('publisher'),
+          year:       _nonEmpty('year'),
+          genre:      _nonEmpty('genre'),
+          location:   _nonEmpty('location'),
+          callNumber: _nonEmpty('callNumber'),
+          review:     _nonEmpty('review'),
+          status:     _status,
+          isRead:     _isRead,
+          medium:     _medium,
+          coverUrl:   _coverUrl, // thumbnailUrl(scan) 또는 null
         ));
         debugPrint('[SAVE] addBook 반환: localId=${created.localId} supabaseId=${created.supabaseId}');
 
@@ -308,7 +322,23 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
                 _Field(controller: _publisher, label: '출판사'),
                 _Field(controller: _year,      label: '출판연도', keyboardType: TextInputType.number),
                 _Field(controller: _genre,     label: '장르'),
-                _Field(controller: _location,  label: '책장 위치'),
+                _Field(controller: _location,   label: '책장 위치'),
+                _Field(controller: _callNumber, label: '청구기호',
+                    hint: '예) 813.6-한강-채'),
+                const SizedBox(height: 4),
+                _MediumSelector(
+                  value: _medium,
+                  onChanged: (v) => setState(() => _medium = v),
+                ),
+                SwitchListTile(
+                  title: const Text('읽은 책',
+                      style: TextStyle(color: AppColors.cream, fontSize: 14)),
+                  value: _isRead,
+                  onChanged: (v) => setState(() => _isRead = v),
+                  activeThumbColor: AppColors.gold,
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                ),
                 _Field(controller: _review,    label: '메모', maxLines: 3),
                 const SizedBox(height: 12),
                 _StatusToggle(
@@ -416,6 +446,7 @@ class _CoverPicker extends StatelessWidget {
 class _Field extends StatelessWidget {
   final TextEditingController controller;
   final String label;
+  final String? hint;
   final FormFieldValidator<String>? validator;
   final TextInputType? keyboardType;
   final int maxLines;
@@ -423,6 +454,7 @@ class _Field extends StatelessWidget {
   const _Field({
     required this.controller,
     required this.label,
+    this.hint,
     this.validator,
     this.keyboardType,
     this.maxLines = 1,
@@ -438,7 +470,43 @@ class _Field extends StatelessWidget {
         keyboardType: keyboardType,
         maxLines: maxLines,
         style: const TextStyle(color: AppColors.cream),
-        decoration: InputDecoration(labelText: label),
+        decoration: InputDecoration(
+          labelText: label,
+          hintText: hint,
+          hintStyle: const TextStyle(color: AppColors.muted, fontSize: 13),
+        ),
+      ),
+    );
+  }
+}
+
+class _MediumSelector extends StatelessWidget {
+  final String value;
+  final ValueChanged<String> onChanged;
+  const _MediumSelector({required this.value, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        children: [
+          const Text('매체', style: TextStyle(color: AppColors.muted, fontSize: 13)),
+          const SizedBox(width: 12),
+          ToggleButtons(
+            isSelected: [value == 'paper', value == 'ebook', value == 'audio'],
+            onPressed: (i) => onChanged(['paper', 'ebook', 'audio'][i]),
+            borderRadius: BorderRadius.circular(8),
+            selectedColor: AppColors.bg,
+            fillColor: AppColors.gold,
+            color: AppColors.muted,
+            borderColor: AppColors.dim,
+            selectedBorderColor: AppColors.gold,
+            textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+            constraints: const BoxConstraints(minHeight: 36, minWidth: 68),
+            children: const [Text('종이책'), Text('전자책'), Text('오디오북')],
+          ),
+        ],
       ),
     );
   }

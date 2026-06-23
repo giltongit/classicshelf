@@ -458,6 +458,10 @@ class BookRepositoryImpl implements BookRepository {
       if (book.publisher != null) 'publisher': book.publisher,
       if (book.location != null) 'location': book.location,
       'priority_read': book.priorityRead,
+      'is_read': book.isRead,
+      'medium': book.medium,
+      if (book.language != null) 'language': book.language,
+      if (book.callNumber != null) 'call_number': book.callNumber,
     });
   }
 
@@ -481,6 +485,10 @@ class BookRepositoryImpl implements BookRepository {
         publisher: d.publisher,
         location: d.location,
         priorityRead: d.priorityRead,
+        isRead: d.isRead,
+        medium: d.medium,
+        language: d.language,
+        callNumber: d.callNumber,
         createdAt: d.createdAt,
         updatedAt: d.updatedAt,
       );
@@ -501,6 +509,10 @@ class BookRepositoryImpl implements BookRepository {
         publisher: Value(b.publisher),
         location: Value(b.location),
         priorityRead: Value(b.priorityRead),
+        isRead: Value(b.isRead),
+        medium: Value(b.medium),
+        language: Value(b.language),
+        callNumber: Value(b.callNumber),
         createdAt:
             b.createdAt != null ? Value(b.createdAt!) : const Value.absent(),
         updatedAt:
