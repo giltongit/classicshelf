@@ -155,7 +155,18 @@ class _ScanScreenState extends State<ScanScreen>
   // 직접입력 add. /add 와 동일하게 저장/취소 구분, 둘 다 락 유지.
   Future<void> _goToManualAdd() async {
     _to(_Phase.navigatingToAdd);
-    final saved = await context.push<bool>('/add');
+    final extra = _lastProcessedIsbn != null
+        ? BookSearchResult(
+            googleId: '',
+            title: '',
+            authors: const [],
+            categories: const [],
+            language: '',
+            isbn13: _lastProcessedIsbn!.length == 13 ? _lastProcessedIsbn : null,
+            isbn10: _lastProcessedIsbn!.length == 10 ? _lastProcessedIsbn : null,
+          )
+        : null;
+    final saved = await context.push<bool>('/add', extra: extra);
     if (!mounted) return;
     _to(saved == true ? _Phase.scanning : _Phase.cardCancelled);
   }
