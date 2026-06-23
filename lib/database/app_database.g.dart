@@ -176,6 +176,51 @@ class $BooksTable extends Books with TableInfo<$BooksTable, BookData> {
     ),
     defaultValue: const Constant(false),
   );
+  static const VerificationMeta _isReadMeta = const VerificationMeta('isRead');
+  @override
+  late final GeneratedColumn<bool> isRead = GeneratedColumn<bool>(
+    'is_read',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_read" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _mediumMeta = const VerificationMeta('medium');
+  @override
+  late final GeneratedColumn<String> medium = GeneratedColumn<String>(
+    'medium',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('paper'),
+  );
+  static const VerificationMeta _languageMeta = const VerificationMeta(
+    'language',
+  );
+  @override
+  late final GeneratedColumn<String> language = GeneratedColumn<String>(
+    'language',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _callNumberMeta = const VerificationMeta(
+    'callNumber',
+  );
+  @override
+  late final GeneratedColumn<String> callNumber = GeneratedColumn<String>(
+    'call_number',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -218,6 +263,10 @@ class $BooksTable extends Books with TableInfo<$BooksTable, BookData> {
     publisher,
     location,
     priorityRead,
+    isRead,
+    medium,
+    language,
+    callNumber,
     createdAt,
     updatedAt,
   ];
@@ -338,6 +387,30 @@ class $BooksTable extends Books with TableInfo<$BooksTable, BookData> {
         ),
       );
     }
+    if (data.containsKey('is_read')) {
+      context.handle(
+        _isReadMeta,
+        isRead.isAcceptableOrUnknown(data['is_read']!, _isReadMeta),
+      );
+    }
+    if (data.containsKey('medium')) {
+      context.handle(
+        _mediumMeta,
+        medium.isAcceptableOrUnknown(data['medium']!, _mediumMeta),
+      );
+    }
+    if (data.containsKey('language')) {
+      context.handle(
+        _languageMeta,
+        language.isAcceptableOrUnknown(data['language']!, _languageMeta),
+      );
+    }
+    if (data.containsKey('call_number')) {
+      context.handle(
+        _callNumberMeta,
+        callNumber.isAcceptableOrUnknown(data['call_number']!, _callNumberMeta),
+      );
+    }
     if (data.containsKey('created_at')) {
       context.handle(
         _createdAtMeta,
@@ -423,6 +496,22 @@ class $BooksTable extends Books with TableInfo<$BooksTable, BookData> {
         DriftSqlType.bool,
         data['${effectivePrefix}priority_read'],
       )!,
+      isRead: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_read'],
+      )!,
+      medium: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}medium'],
+      )!,
+      language: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}language'],
+      ),
+      callNumber: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}call_number'],
+      ),
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
@@ -457,6 +546,10 @@ class BookData extends DataClass implements Insertable<BookData> {
   final String? publisher;
   final String? location;
   final bool priorityRead;
+  final bool isRead;
+  final String medium;
+  final String? language;
+  final String? callNumber;
   final DateTime createdAt;
   final DateTime updatedAt;
   const BookData({
@@ -476,6 +569,10 @@ class BookData extends DataClass implements Insertable<BookData> {
     this.publisher,
     this.location,
     required this.priorityRead,
+    required this.isRead,
+    required this.medium,
+    this.language,
+    this.callNumber,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -518,6 +615,14 @@ class BookData extends DataClass implements Insertable<BookData> {
       map['location'] = Variable<String>(location);
     }
     map['priority_read'] = Variable<bool>(priorityRead);
+    map['is_read'] = Variable<bool>(isRead);
+    map['medium'] = Variable<String>(medium);
+    if (!nullToAbsent || language != null) {
+      map['language'] = Variable<String>(language);
+    }
+    if (!nullToAbsent || callNumber != null) {
+      map['call_number'] = Variable<String>(callNumber);
+    }
     map['created_at'] = Variable<DateTime>(createdAt);
     map['updated_at'] = Variable<DateTime>(updatedAt);
     return map;
@@ -557,6 +662,14 @@ class BookData extends DataClass implements Insertable<BookData> {
           ? const Value.absent()
           : Value(location),
       priorityRead: Value(priorityRead),
+      isRead: Value(isRead),
+      medium: Value(medium),
+      language: language == null && nullToAbsent
+          ? const Value.absent()
+          : Value(language),
+      callNumber: callNumber == null && nullToAbsent
+          ? const Value.absent()
+          : Value(callNumber),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
     );
@@ -584,6 +697,10 @@ class BookData extends DataClass implements Insertable<BookData> {
       publisher: serializer.fromJson<String?>(json['publisher']),
       location: serializer.fromJson<String?>(json['location']),
       priorityRead: serializer.fromJson<bool>(json['priorityRead']),
+      isRead: serializer.fromJson<bool>(json['isRead']),
+      medium: serializer.fromJson<String>(json['medium']),
+      language: serializer.fromJson<String?>(json['language']),
+      callNumber: serializer.fromJson<String?>(json['callNumber']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
     );
@@ -608,6 +725,10 @@ class BookData extends DataClass implements Insertable<BookData> {
       'publisher': serializer.toJson<String?>(publisher),
       'location': serializer.toJson<String?>(location),
       'priorityRead': serializer.toJson<bool>(priorityRead),
+      'isRead': serializer.toJson<bool>(isRead),
+      'medium': serializer.toJson<String>(medium),
+      'language': serializer.toJson<String?>(language),
+      'callNumber': serializer.toJson<String?>(callNumber),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
     };
@@ -630,6 +751,10 @@ class BookData extends DataClass implements Insertable<BookData> {
     Value<String?> publisher = const Value.absent(),
     Value<String?> location = const Value.absent(),
     bool? priorityRead,
+    bool? isRead,
+    String? medium,
+    Value<String?> language = const Value.absent(),
+    Value<String?> callNumber = const Value.absent(),
     DateTime? createdAt,
     DateTime? updatedAt,
   }) => BookData(
@@ -649,6 +774,10 @@ class BookData extends DataClass implements Insertable<BookData> {
     publisher: publisher.present ? publisher.value : this.publisher,
     location: location.present ? location.value : this.location,
     priorityRead: priorityRead ?? this.priorityRead,
+    isRead: isRead ?? this.isRead,
+    medium: medium ?? this.medium,
+    language: language.present ? language.value : this.language,
+    callNumber: callNumber.present ? callNumber.value : this.callNumber,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
   );
@@ -676,6 +805,12 @@ class BookData extends DataClass implements Insertable<BookData> {
       priorityRead: data.priorityRead.present
           ? data.priorityRead.value
           : this.priorityRead,
+      isRead: data.isRead.present ? data.isRead.value : this.isRead,
+      medium: data.medium.present ? data.medium.value : this.medium,
+      language: data.language.present ? data.language.value : this.language,
+      callNumber: data.callNumber.present
+          ? data.callNumber.value
+          : this.callNumber,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
@@ -700,6 +835,10 @@ class BookData extends DataClass implements Insertable<BookData> {
           ..write('publisher: $publisher, ')
           ..write('location: $location, ')
           ..write('priorityRead: $priorityRead, ')
+          ..write('isRead: $isRead, ')
+          ..write('medium: $medium, ')
+          ..write('language: $language, ')
+          ..write('callNumber: $callNumber, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
@@ -707,7 +846,7 @@ class BookData extends DataClass implements Insertable<BookData> {
   }
 
   @override
-  int get hashCode => Object.hash(
+  int get hashCode => Object.hashAll([
     id,
     supabaseId,
     userId,
@@ -724,9 +863,13 @@ class BookData extends DataClass implements Insertable<BookData> {
     publisher,
     location,
     priorityRead,
+    isRead,
+    medium,
+    language,
+    callNumber,
     createdAt,
     updatedAt,
-  );
+  ]);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -747,6 +890,10 @@ class BookData extends DataClass implements Insertable<BookData> {
           other.publisher == this.publisher &&
           other.location == this.location &&
           other.priorityRead == this.priorityRead &&
+          other.isRead == this.isRead &&
+          other.medium == this.medium &&
+          other.language == this.language &&
+          other.callNumber == this.callNumber &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt);
 }
@@ -768,6 +915,10 @@ class BooksCompanion extends UpdateCompanion<BookData> {
   final Value<String?> publisher;
   final Value<String?> location;
   final Value<bool> priorityRead;
+  final Value<bool> isRead;
+  final Value<String> medium;
+  final Value<String?> language;
+  final Value<String?> callNumber;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
   const BooksCompanion({
@@ -787,6 +938,10 @@ class BooksCompanion extends UpdateCompanion<BookData> {
     this.publisher = const Value.absent(),
     this.location = const Value.absent(),
     this.priorityRead = const Value.absent(),
+    this.isRead = const Value.absent(),
+    this.medium = const Value.absent(),
+    this.language = const Value.absent(),
+    this.callNumber = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
   });
@@ -807,6 +962,10 @@ class BooksCompanion extends UpdateCompanion<BookData> {
     this.publisher = const Value.absent(),
     this.location = const Value.absent(),
     this.priorityRead = const Value.absent(),
+    this.isRead = const Value.absent(),
+    this.medium = const Value.absent(),
+    this.language = const Value.absent(),
+    this.callNumber = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
   }) : userId = Value(userId),
@@ -829,6 +988,10 @@ class BooksCompanion extends UpdateCompanion<BookData> {
     Expression<String>? publisher,
     Expression<String>? location,
     Expression<bool>? priorityRead,
+    Expression<bool>? isRead,
+    Expression<String>? medium,
+    Expression<String>? language,
+    Expression<String>? callNumber,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
   }) {
@@ -849,6 +1012,10 @@ class BooksCompanion extends UpdateCompanion<BookData> {
       if (publisher != null) 'publisher': publisher,
       if (location != null) 'location': location,
       if (priorityRead != null) 'priority_read': priorityRead,
+      if (isRead != null) 'is_read': isRead,
+      if (medium != null) 'medium': medium,
+      if (language != null) 'language': language,
+      if (callNumber != null) 'call_number': callNumber,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
     });
@@ -871,6 +1038,10 @@ class BooksCompanion extends UpdateCompanion<BookData> {
     Value<String?>? publisher,
     Value<String?>? location,
     Value<bool>? priorityRead,
+    Value<bool>? isRead,
+    Value<String>? medium,
+    Value<String?>? language,
+    Value<String?>? callNumber,
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
   }) {
@@ -891,6 +1062,10 @@ class BooksCompanion extends UpdateCompanion<BookData> {
       publisher: publisher ?? this.publisher,
       location: location ?? this.location,
       priorityRead: priorityRead ?? this.priorityRead,
+      isRead: isRead ?? this.isRead,
+      medium: medium ?? this.medium,
+      language: language ?? this.language,
+      callNumber: callNumber ?? this.callNumber,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
@@ -947,6 +1122,18 @@ class BooksCompanion extends UpdateCompanion<BookData> {
     if (priorityRead.present) {
       map['priority_read'] = Variable<bool>(priorityRead.value);
     }
+    if (isRead.present) {
+      map['is_read'] = Variable<bool>(isRead.value);
+    }
+    if (medium.present) {
+      map['medium'] = Variable<String>(medium.value);
+    }
+    if (language.present) {
+      map['language'] = Variable<String>(language.value);
+    }
+    if (callNumber.present) {
+      map['call_number'] = Variable<String>(callNumber.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
@@ -975,6 +1162,10 @@ class BooksCompanion extends UpdateCompanion<BookData> {
           ..write('publisher: $publisher, ')
           ..write('location: $location, ')
           ..write('priorityRead: $priorityRead, ')
+          ..write('isRead: $isRead, ')
+          ..write('medium: $medium, ')
+          ..write('language: $language, ')
+          ..write('callNumber: $callNumber, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
@@ -1368,6 +1559,10 @@ typedef $$BooksTableCreateCompanionBuilder =
       Value<String?> publisher,
       Value<String?> location,
       Value<bool> priorityRead,
+      Value<bool> isRead,
+      Value<String> medium,
+      Value<String?> language,
+      Value<String?> callNumber,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
     });
@@ -1389,6 +1584,10 @@ typedef $$BooksTableUpdateCompanionBuilder =
       Value<String?> publisher,
       Value<String?> location,
       Value<bool> priorityRead,
+      Value<bool> isRead,
+      Value<String> medium,
+      Value<String?> language,
+      Value<String?> callNumber,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
     });
@@ -1478,6 +1677,26 @@ class $$BooksTableFilterComposer extends Composer<_$AppDatabase, $BooksTable> {
 
   ColumnFilters<bool> get priorityRead => $composableBuilder(
     column: $table.priorityRead,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isRead => $composableBuilder(
+    column: $table.isRead,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get medium => $composableBuilder(
+    column: $table.medium,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get language => $composableBuilder(
+    column: $table.language,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get callNumber => $composableBuilder(
+    column: $table.callNumber,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -1581,6 +1800,26 @@ class $$BooksTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<bool> get isRead => $composableBuilder(
+    column: $table.isRead,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get medium => $composableBuilder(
+    column: $table.medium,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get language => $composableBuilder(
+    column: $table.language,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get callNumber => $composableBuilder(
+    column: $table.callNumber,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
@@ -1655,6 +1894,20 @@ class $$BooksTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<bool> get isRead =>
+      $composableBuilder(column: $table.isRead, builder: (column) => column);
+
+  GeneratedColumn<String> get medium =>
+      $composableBuilder(column: $table.medium, builder: (column) => column);
+
+  GeneratedColumn<String> get language =>
+      $composableBuilder(column: $table.language, builder: (column) => column);
+
+  GeneratedColumn<String> get callNumber => $composableBuilder(
+    column: $table.callNumber,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
 
@@ -1706,6 +1959,10 @@ class $$BooksTableTableManager
                 Value<String?> publisher = const Value.absent(),
                 Value<String?> location = const Value.absent(),
                 Value<bool> priorityRead = const Value.absent(),
+                Value<bool> isRead = const Value.absent(),
+                Value<String> medium = const Value.absent(),
+                Value<String?> language = const Value.absent(),
+                Value<String?> callNumber = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
               }) => BooksCompanion(
@@ -1725,6 +1982,10 @@ class $$BooksTableTableManager
                 publisher: publisher,
                 location: location,
                 priorityRead: priorityRead,
+                isRead: isRead,
+                medium: medium,
+                language: language,
+                callNumber: callNumber,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
               ),
@@ -1746,6 +2007,10 @@ class $$BooksTableTableManager
                 Value<String?> publisher = const Value.absent(),
                 Value<String?> location = const Value.absent(),
                 Value<bool> priorityRead = const Value.absent(),
+                Value<bool> isRead = const Value.absent(),
+                Value<String> medium = const Value.absent(),
+                Value<String?> language = const Value.absent(),
+                Value<String?> callNumber = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
               }) => BooksCompanion.insert(
@@ -1765,6 +2030,10 @@ class $$BooksTableTableManager
                 publisher: publisher,
                 location: location,
                 priorityRead: priorityRead,
+                isRead: isRead,
+                medium: medium,
+                language: language,
+                callNumber: callNumber,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
               ),

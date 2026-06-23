@@ -26,6 +26,10 @@ class Books extends Table {
   TextColumn get location => text().nullable()();
   BoolColumn get priorityRead =>
       boolean().withDefault(const Constant(false))();
+  BoolColumn get isRead => boolean().withDefault(const Constant(false))();
+  TextColumn get medium => text().withDefault(const Constant('paper'))();
+  TextColumn get language => text().nullable()();
+  TextColumn get callNumber => text().nullable()();
   DateTimeColumn get createdAt =>
       dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get updatedAt =>
@@ -49,7 +53,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -59,6 +63,12 @@ class AppDatabase extends _$AppDatabase {
           }
           if (from < 3) {
             await m.createTable(syncQueue);
+          }
+          if (from < 4) {
+            await m.addColumn(books, books.isRead);
+            await m.addColumn(books, books.medium);
+            await m.addColumn(books, books.language);
+            await m.addColumn(books, books.callNumber);
           }
         },
       );
