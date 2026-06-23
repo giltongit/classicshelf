@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../models/book_search_result.dart';
 
@@ -26,6 +27,7 @@ class BookSearchService {
   // 키는 --dart-define-from-file env/dev.json 에서 주입된다.
   static const _naverClientId     = String.fromEnvironment('NAVER_CLIENT_ID');
   static const _naverClientSecret = String.fromEnvironment('NAVER_CLIENT_SECRET');
+  static const _googleApiKey      = String.fromEnvironment('GOOGLE_BOOKS_API_KEY');
 
   Map<String, String> get _naverHeaders => {
         'X-Naver-Client-Id':     _naverClientId,
@@ -118,13 +120,16 @@ class BookSearchService {
     String query, {
     int maxResults = 20,
   }) async {
-    final uri = Uri.parse(_googleBase).replace(queryParameters: {
+    final params = <String, String>{
       'q':          query.trim(),
       'maxResults': '$maxResults',
       'printType':  'books',
       'fields':
           'items(id,volumeInfo(title,authors,publisher,publishedDate,description,industryIdentifiers,pageCount,categories,imageLinks,language))',
-    });
+    };
+    if (_googleApiKey.isNotEmpty) params['key'] = _googleApiKey;
+    debugPrint('[SEARCH] 구글 폴백 호출 — key 포함=${_googleApiKey.isNotEmpty}');
+    final uri = Uri.parse(_googleBase).replace(queryParameters: params);
 
     try {
       final resp = await http.get(uri).timeout(const Duration(seconds: 10));
