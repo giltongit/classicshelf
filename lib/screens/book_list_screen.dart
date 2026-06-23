@@ -204,21 +204,23 @@ class _StatusBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final owned = status == 'owned';
+    final (label, fg, bg) = switch (status) {
+      'owned'    => ('소장', AppColors.gold,  AppColors.goldSubtle),
+      'wishlist' => ('희망', AppColors.muted, AppColors.mutedSubtle),
+      'rental'   => ('대여', AppColors.muted, AppColors.mutedSubtle),
+      _          => ('기타', AppColors.muted, AppColors.mutedSubtle),
+    };
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
       decoration: BoxDecoration(
-        color: owned ? AppColors.goldSubtle : AppColors.mutedSubtle,
+        color: bg,
         borderRadius: BorderRadius.circular(4),
-        border: Border.all(
-          color: owned ? AppColors.gold : AppColors.muted,
-          width: 0.5,
-        ),
+        border: Border.all(color: fg, width: 0.5),
       ),
       child: Text(
-        owned ? '소장' : '희망',
+        label,
         style: TextStyle(
-          color: owned ? AppColors.gold : AppColors.muted,
+          color: fg,
           fontSize: 11,
           fontWeight: FontWeight.w600,
         ),

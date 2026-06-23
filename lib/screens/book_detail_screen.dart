@@ -113,6 +113,21 @@ class _BookDetailBody extends StatelessWidget {
 
                 _StatusToggleRow(book: book, ref: ref),
 
+                if (book.isRead)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.check_circle_outline,
+                            size: 14, color: AppColors.muted),
+                        const SizedBox(width: 4),
+                        const Text('읽은 책',
+                            style: TextStyle(
+                                color: AppColors.muted, fontSize: 12)),
+                      ],
+                    ),
+                  ),
+
                 const SizedBox(height: 20),
                 const Divider(color: AppColors.dim),
                 const SizedBox(height: 16),
@@ -161,6 +176,11 @@ class _BookDetailBody extends StatelessWidget {
       ('책장 위치', b.location),
       ('ISBN',   b.isbn),
       ('총 페이지', b.pageCount?.toString()),
+      ('청구기호', b.callNumber),
+      ('매체',   b.medium == 'paper' ? '종이책'
+               : b.medium == 'ebook' ? '전자책'
+               : b.medium == 'audio' ? '오디오북'
+               : b.medium),
     ];
     return pairs
         .where((p) => p.$2 != null && p.$2!.isNotEmpty)
@@ -203,15 +223,18 @@ class _StatusToggleRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isOwned = book.status == 'owned';
     return Row(
       children: [
         const Text('상태', style: TextStyle(color: AppColors.muted, fontSize: 13)),
         const SizedBox(width: 12),
         ToggleButtons(
-          isSelected: [isOwned, !isOwned],
+          isSelected: [
+            book.status == 'owned',
+            book.status == 'wishlist',
+            book.status == 'rental',
+          ],
           onPressed: (i) async {
-            final newStatus = i == 0 ? 'owned' : 'wishlist';
+            final newStatus = ['owned', 'wishlist', 'rental'][i];
             if (newStatus == book.status) return;
             await ref.read(bookRepositoryProvider).updateBook(
               book.copyWith(status: newStatus),
@@ -225,8 +248,8 @@ class _StatusToggleRow extends StatelessWidget {
           borderColor: AppColors.dim,
           selectedBorderColor: AppColors.gold,
           textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
-          constraints: const BoxConstraints(minHeight: 36, minWidth: 80),
-          children: const [Text('소장'), Text('희망')],
+          constraints: const BoxConstraints(minHeight: 36, minWidth: 68),
+          children: const [Text('소장'), Text('희망'), Text('대여')],
         ),
       ],
     );
