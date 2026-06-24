@@ -30,6 +30,11 @@ class BookListScreen extends ConsumerWidget {
             tooltip: '책 추가',
             onPressed: () => context.push('/add'),
           ),
+          IconButton(
+            icon: const Icon(Icons.settings_outlined),
+            tooltip: '설정',
+            onPressed: () => context.push('/settings'),
+          ),
         ],
       ),
       body: RefreshIndicator(

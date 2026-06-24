@@ -6,6 +6,7 @@ import '../screens/add_book_screen.dart';
 import '../screens/book_detail_screen.dart';
 import '../screens/book_list_screen.dart';
 import '../screens/scan_screen.dart';
+import '../screens/settings_screen.dart';
 
 final appRouter = GoRouter(
   initialLocation: '/',
@@ -33,6 +34,10 @@ final appRouter = GoRouter(
       builder: (context, state) => BookDetailScreen(
         localId: int.parse(state.pathParameters['id']!),
       ),
+    ),
+    GoRoute(
+      path: '/settings',
+      builder: (context, state) => const SettingsScreen(),
     ),
   ],
 );

@@ -316,6 +316,16 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
                   onGallery: _pickFromGallery,
                 ),
                 const SizedBox(height: 20),
+                _StatusToggle(
+                  value: _status,
+                  onChanged: (v) => setState(() => _status = v),
+                ),
+                const SizedBox(height: 4),
+                _MediumSelector(
+                  value: _medium,
+                  onChanged: (v) => setState(() => _medium = v),
+                ),
+                const SizedBox(height: 12),
                 _Field(controller: _title,     label: '제목 *',  validator: _requiredValidator),
                 _Field(controller: _author,    label: '저자 *',  validator: _requiredValidator),
                 _Field(controller: _isbn,      label: 'ISBN',   keyboardType: TextInputType.number),
@@ -325,11 +335,6 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
                 _Field(controller: _location,   label: '책장 위치'),
                 _Field(controller: _callNumber, label: '청구기호',
                     hint: '예) 813.6-한강-채'),
-                const SizedBox(height: 4),
-                _MediumSelector(
-                  value: _medium,
-                  onChanged: (v) => setState(() => _medium = v),
-                ),
                 SwitchListTile(
                   title: const Text('읽은 책',
                       style: TextStyle(color: AppColors.cream, fontSize: 14)),
@@ -340,11 +345,6 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
                   contentPadding: EdgeInsets.zero,
                 ),
                 _Field(controller: _review,    label: '메모', maxLines: 3),
-                const SizedBox(height: 12),
-                _StatusToggle(
-                  value: _status,
-                  onChanged: (v) => setState(() => _status = v),
-                ),
                 const SizedBox(height: 24),
                 ElevatedButton(
                   onPressed: _saving ? null : _save,
@@ -525,8 +525,8 @@ class _StatusToggle extends StatelessWidget {
         const Text('상태', style: TextStyle(color: AppColors.muted, fontSize: 13)),
         const SizedBox(width: 12),
         ToggleButtons(
-          isSelected: [isOwned, !isOwned],
-          onPressed: (i) => onChanged(i == 0 ? 'owned' : 'wishlist'),
+          isSelected: [isOwned, value == 'wishlist', value == 'rental'],
+          onPressed: (i) => onChanged(['owned', 'wishlist', 'rental'][i]),
           borderRadius: BorderRadius.circular(8),
           selectedColor: AppColors.bg,
           fillColor: AppColors.gold,
@@ -534,8 +534,8 @@ class _StatusToggle extends StatelessWidget {
           borderColor: AppColors.dim,
           selectedBorderColor: AppColors.gold,
           textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
-          constraints: const BoxConstraints(minHeight: 36, minWidth: 80),
-          children: const [Text('소장'), Text('희망')],
+          constraints: const BoxConstraints(minHeight: 36, minWidth: 68),
+          children: const [Text('소장'), Text('희망'), Text('대여')],
         ),
       ],
     );
