@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:go_router/go_router.dart';
+
 import '../providers/providers.dart';
 import '../services/csv_export_service.dart';
 import '../theme/app_theme.dart';
@@ -24,6 +26,12 @@ class SettingsScreen extends ConsumerWidget {
             title: 'CSV로 내보내기',
             subtitle: '전체 도서 목록을 CSV 파일로 공유합니다',
             onTap: () => _exportCsv(context, ref),
+          ),
+          _SettingsTile(
+            icon: Icons.upload_file_outlined,
+            title: 'CSV 가져오기',
+            subtitle: 'CSV 파일에서 도서 목록을 불러옵니다',
+            onTap: () => context.push('/csv-import'),
           ),
         ],
       ),

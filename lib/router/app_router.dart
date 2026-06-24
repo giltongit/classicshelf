@@ -6,6 +6,7 @@ import '../screens/add_book_screen.dart';
 import '../screens/book_detail_screen.dart';
 import '../screens/book_list_screen.dart';
 import '../screens/scan_screen.dart';
+import '../screens/csv_import_screen.dart';
 import '../screens/settings_screen.dart';
 
 final appRouter = GoRouter(
@@ -38,6 +39,10 @@ final appRouter = GoRouter(
     GoRoute(
       path: '/settings',
       builder: (context, state) => const SettingsScreen(),
+    ),
+    GoRoute(
+      path: '/csv-import',
+      builder: (context, state) => const CsvImportScreen(),
     ),
   ],
 );
