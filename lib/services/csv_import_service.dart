@@ -186,7 +186,7 @@ class CsvImportService {
       userId: _auth.currentUserId ?? '',
       title: data['title'] ?? '',
       author: data['author'] ?? '',
-      isbn: _nullIfEmpty(data['isbn']),
+      isbn: _nullIfEmpty(_normalizeIsbn(data['isbn'])),
       status: _validStatus(data['status']),
       medium: _validMedium(data['medium']),
       isRead: data['isRead'] == '1' || data['isRead'] == 'true',
@@ -207,6 +207,14 @@ class CsvImportService {
   }
 
   String? _nullIfEmpty(String? s) => (s == null || s.isEmpty) ? null : s;
+
+  // 엑셀 지수 표기(9.79E+12 등) → 정수 문자열. 일반 문자열 ISBN은 그대로.
+  String _normalizeIsbn(String? s) {
+    if (s == null || s.isEmpty) return s ?? '';
+    final n = double.tryParse(s);
+    if (n != null) return n.toStringAsFixed(0);
+    return s;
+  }
 
   bool _boolVal(String? s) {
     final v = (s ?? '').toLowerCase();
