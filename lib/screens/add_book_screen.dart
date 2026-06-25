@@ -181,6 +181,7 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
       }
 
       ref.invalidate(booksProvider);
+      try { await ref.read(booksProvider.future); } catch (_) {}
       if (mounted) context.pop(true);
     } catch (e) {
       if (mounted) {
