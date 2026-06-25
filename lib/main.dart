@@ -25,11 +25,36 @@ Future<void> main() async {
   runApp(const ProviderScope(child: MyApp()));
 }
 
-class MyApp extends ConsumerWidget {
+class MyApp extends ConsumerStatefulWidget {
   const MyApp({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      debugPrint('[QUEUE] 앱 포그라운드 복귀 — sync_queue flush 트리거');
+      ref.read(syncQueueFlusherProvider.notifier).triggerFlush();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     // 앱 시작 시 업로드 큐 / sync_queue / connectivity 리스너 초기화 (pre-warm)
     ref.watch(coverUploadProvider);
     ref.watch(syncQueueFlusherProvider);

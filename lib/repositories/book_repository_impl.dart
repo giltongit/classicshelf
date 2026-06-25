@@ -275,16 +275,17 @@ class BookRepositoryImpl implements BookRepository {
   // ── sync_queue flush ───────────────────────────────────────────────────────
 
   @override
-  Future<List<BookInsertResult>> flushSyncQueue() async {
+  Future<FlushSyncResult> flushSyncQueue() async {
     final rows = await (_db.select(_db.syncQueue)
           ..orderBy([(t) => OrderingTerm.asc(t.createdAt)]))
         .get();
     if (rows.isEmpty) {
       debugPrint('[QUEUE] flush 시작: 0건 (비어 있음)');
-      return const [];
+      return (inserted: const <BookInsertResult>[], totalItems: 0, dnsFailures: 0, succeeded: 0);
     }
     debugPrint('[QUEUE] flush 시작: ${rows.length}건');
     final inserted = <BookInsertResult>[];
+    int dnsFailures = 0;
     for (final item in rows) {
       try {
         switch (item.operation) {
@@ -301,11 +302,24 @@ class BookRepositoryImpl implements BookRepository {
         }
       } catch (e) {
         debugPrint('[QUEUE] 처리: id=${item.id} op=${item.operation} → 오류(보존): $e');
+        if (_isDnsError(e)) dnsFailures++;
       }
     }
     final remaining = await pendingQueueCount();
+    final succeeded = rows.length - remaining;
     debugPrint('[QUEUE] flush 완료: 남은 $remaining건, 신규 insert ${inserted.length}건');
-    return inserted;
+    return (
+      inserted: inserted,
+      totalItems: rows.length,
+      dnsFailures: dnsFailures,
+      succeeded: succeeded,
+    );
+  }
+
+  static bool _isDnsError(Object e) {
+    final s = e.toString();
+    return s.contains('Failed host lookup') ||
+        s.contains('No address associated with hostname');
   }
 
   /// insert 성공 시 BookInsertResult 반환, 스킵/실패 시 null.
