@@ -61,12 +61,15 @@ class CsvImportService {
     'year':       ['year', '출판연도', '연도'],
     'genre':      ['genre', '장르'],
     'location':   ['location', '위치'],
-    'callNumber': ['call_number', '청구기호'],
-    'review':     ['review', '메모'],
-    'pageCount':  ['page_count', '페이지'],
-    'coverUrl':   ['cover_url', '표지'],
-    'createdAt':  ['created_at'],
-    'updatedAt':  ['updated_at'],
+    'callNumber':   ['call_number', '청구기호'],
+    'language':     ['language', '언어'],
+    'priorityRead': ['priority_read', '우선읽기'],
+    'description':  ['description', '설명', '책소개'],
+    'review':       ['review', '메모'],
+    'pageCount':    ['page_count', '페이지'],
+    'coverUrl':     ['cover_url', '표지', '표지url'],
+    'createdAt':    ['created_at'],
+    'updatedAt':    ['updated_at'],
   };
 
   // ── 인코딩 감지 + CSV 파싱 ───────────────────────────────
@@ -192,6 +195,9 @@ class CsvImportService {
       genre: _nullIfEmpty(data['genre']),
       location: _nullIfEmpty(data['location']),
       callNumber: _nullIfEmpty(data['callNumber']),
+      language: _nullIfEmpty(data['language']),
+      priorityRead: _boolVal(data['priorityRead']),
+      description: _nullIfEmpty(data['description']),
       review: _nullIfEmpty(data['review']),
       pageCount: int.tryParse(data['pageCount'] ?? ''),
       coverUrl: _nullIfEmpty(data['coverUrl']),
@@ -201,6 +207,11 @@ class CsvImportService {
   }
 
   String? _nullIfEmpty(String? s) => (s == null || s.isEmpty) ? null : s;
+
+  bool _boolVal(String? s) {
+    final v = (s ?? '').toLowerCase();
+    return v == 'true' || v == '1' || v == 'yes';
+  }
 
   String _validStatus(String? s) {
     const valid = ['owned', 'wishlist', 'rental'];
