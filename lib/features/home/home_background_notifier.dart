@@ -23,6 +23,19 @@ class HomeBackgroundNotifier extends AsyncNotifier<HomeBgState> {
     return (slotPaths: slotPaths, current: current);
   }
 
+  // 앱이 foreground로 돌아올 때 호출 — AsyncLoading 없이 즉시 전환
+  void reRandomize() {
+    final prev = switch (state) {
+      AsyncData(:final value) => value,
+      _ => null,
+    };
+    if (prev == null) return;
+    final filled = prev.slotPaths.whereType<String>().toList();
+    if (filled.isEmpty) return;
+    final newCurrent = filled[Random().nextInt(filled.length)];
+    state = AsyncData((slotPaths: prev.slotPaths, current: newCurrent));
+  }
+
   Future<void> addOrReplace(int slot) async {
     final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
     if (picked == null) return;
