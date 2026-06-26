@@ -73,7 +73,7 @@ class _StatsBody extends StatelessWidget {
         ),
         const SizedBox(height: 8),
         _DrilldownCard(
-          title: '저자 집중도',
+          title: '가장 많이 만난 저자',
           preview: _authorPreview(books),
           route: '/stats/author',
         ),
