@@ -869,18 +869,17 @@ class _CountChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
       decoration: BoxDecoration(
         color: bg,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: fg.withAlpha(80), width: 0.5),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
             label,
-            style: TextStyle(color: fg, fontSize: 11, fontWeight: FontWeight.w500),
+            style: TextStyle(color: fg, fontSize: 11),
           ),
           const SizedBox(height: 4),
           FittedBox(
@@ -890,7 +889,7 @@ class _CountChip extends StatelessWidget {
               style: TextStyle(
                 color: fg,
                 fontSize: 20,
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.bold,
               ),
             ),
           ),
