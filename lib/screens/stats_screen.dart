@@ -208,10 +208,10 @@ class _Section1AntiLibrary extends StatelessWidget {
   String _message(int unread, int total) {
     if (total == 0) return '';
     final ratio = unread / total;
-    if (ratio >= 0.8) return '나의 도서관은 무한한 가능성을 담고 있습니다';
-    if (ratio >= 0.5) return '나의 도서관에는 $unread권의 가능성이 있습니다';
-    if (ratio >= 0.3) return '나의 도서관 절반이 아직 당신을 기다립니다';
-    return '깊이 읽어내는 나의 도서관입니다';
+    if (ratio >= 0.8) return '당신의 도서관은 무한한 가능성을 담고 있습니다';
+    if (ratio >= 0.5) return '당신의 도서관에는 $unread권의 가능성이 있습니다';
+    if (ratio >= 0.3) return '도서관의 절반이 아직 당신을 기다립니다';
+    return '깊이 읽어내는 도서관입니다';
   }
 }
 
