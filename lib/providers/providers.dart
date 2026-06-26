@@ -5,6 +5,8 @@ import '../database/app_database.dart';
 import '../models/book.dart';
 import '../repositories/book_repository.dart';
 import '../repositories/book_repository_impl.dart';
+import '../repositories/profile_repository.dart';
+import '../repositories/profile_repository_impl.dart';
 import '../services/auth_service.dart';
 
 final supabaseClientProvider = Provider<SupabaseClient>((ref) {
@@ -32,3 +34,27 @@ final bookRepositoryProvider = Provider<BookRepository>((ref) {
 final booksProvider = FutureProvider<List<Book>>((ref) {
   return ref.watch(bookRepositoryProvider).getBooks();
 });
+
+final profileRepositoryProvider = Provider<ProfileRepository>((ref) {
+  return ProfileRepositoryImpl(ref.watch(supabaseClientProvider));
+});
+
+/// tracking_started_at을 Supabase profiles 테이블에서 읽고 캐시.
+/// setDate() 호출 시 Supabase에 upsert + 상태 갱신.
+class TrackingStartedNotifier extends AsyncNotifier<DateTime?> {
+  @override
+  Future<DateTime?> build() {
+    return ref.watch(profileRepositoryProvider).getTrackingStartedAt();
+  }
+
+  Future<void> startToday() async {
+    final today = DateTime.now();
+    await ref.read(profileRepositoryProvider).setTrackingStartedAt(today);
+    state = AsyncData(today);
+  }
+}
+
+final trackingStartedProvider =
+    AsyncNotifierProvider<TrackingStartedNotifier, DateTime?>(
+  TrackingStartedNotifier.new,
+);
