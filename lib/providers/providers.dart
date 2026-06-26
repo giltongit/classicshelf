@@ -58,3 +58,22 @@ final trackingStartedProvider =
     AsyncNotifierProvider<TrackingStartedNotifier, DateTime?>(
   TrackingStartedNotifier.new,
 );
+
+class LibraryNameNotifier extends AsyncNotifier<String?> {
+  @override
+  Future<String?> build() {
+    return ref.watch(profileRepositoryProvider).getLibraryName();
+  }
+
+  Future<void> setLibraryName(String? name) async {
+    final trimmed = name?.trim();
+    final value = (trimmed?.isEmpty ?? true) ? null : trimmed;
+    await ref.read(profileRepositoryProvider).setLibraryName(value);
+    state = AsyncData(value);
+  }
+}
+
+final libraryNameProvider =
+    AsyncNotifierProvider<LibraryNameNotifier, String?>(
+  LibraryNameNotifier.new,
+);

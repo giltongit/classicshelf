@@ -39,4 +39,31 @@ class ProfileRepositoryImpl implements ProfileRepository {
       'tracking_started_at': dateStr,
     });
   }
+
+  @override
+  Future<String?> getLibraryName() async {
+    final uid = _supabase.auth.currentUser?.id;
+    if (uid == null) return null;
+    try {
+      final row = await _supabase
+          .from('profiles')
+          .select('library_name')
+          .eq('user_id', uid)
+          .maybeSingle();
+      return row?['library_name'] as String?;
+    } catch (e) {
+      debugPrint('[PROFILE] getLibraryName 실패: $e');
+      return null;
+    }
+  }
+
+  @override
+  Future<void> setLibraryName(String? name) async {
+    final uid = _supabase.auth.currentUser?.id;
+    if (uid == null) return;
+    await _supabase.from('profiles').upsert({
+      'user_id': uid,
+      'library_name': name,
+    });
+  }
 }
