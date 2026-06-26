@@ -200,7 +200,11 @@ class CsvImportService {
       description: _nullIfEmpty(data['description']),
       review: _nullIfEmpty(data['review']),
       pageCount: int.tryParse(data['pageCount'] ?? ''),
-      coverUrl: _nullIfEmpty(data['coverUrl']),
+      coverUrl: () {
+        final v = _nullIfEmpty(data['coverUrl']);
+        if (v == null) return null;
+        return (v.startsWith('http://') || v.startsWith('https://')) ? v : null;
+      }(),
       createdAt: DateTime.tryParse(data['createdAt'] ?? ''),
       updatedAt: DateTime.tryParse(data['updatedAt'] ?? ''),
     );
