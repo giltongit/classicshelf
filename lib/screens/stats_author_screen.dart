@@ -43,35 +43,43 @@ class _AuthorBody extends StatelessWidget {
       if (a.isNotEmpty) authorMap.putIfAbsent(a, () => []).add(b);
     }
 
-    if (authorMap.isEmpty) {
-      return const Center(
-        child: Text('저자 정보가 없습니다',
-            style: TextStyle(color: AppColors.muted)),
-      );
-    }
-
-    // 권수 내림차순, 동률 가나다순, TOP 20
-    final sorted = authorMap.entries.toList()
+    // 2권 이상 저자만 필터링, 권수 내림차순 + 동률 가나다순
+    final qualified = authorMap.entries
+        .where((e) => e.value.length >= 2)
+        .toList()
       ..sort((a, b) => b.value.length != a.value.length
           ? b.value.length.compareTo(a.value.length)
           : a.key.compareTo(b.key));
-    final top20 = sorted.take(20).toList();
-    final maxVal = top20.first.value.length;
-    final allOne = maxVal == 1;
+
+    if (qualified.isEmpty) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: Text(
+            '모든 저자의 책을 1권씩 소장하고 있습니다',
+            style: TextStyle(
+                color: AppColors.muted, fontSize: 13, height: 1.5),
+            textAlign: TextAlign.center,
+          ),
+        ),
+      );
+    }
+
+    final top30 = qualified.take(30).toList();
+    final maxVal = top30.first.value.length;
+    final overflow = qualified.length - 30;
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
       children: [
-        if (allOne)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: Text(
-              '모든 저자의 책을 1권씩 소장하고 있습니다',
-              style: const TextStyle(
-                  color: AppColors.muted, fontSize: 13, height: 1.4),
-            ),
-          ),
-        ...top20.map((e) {
+        const Text(
+          '2권 이상 같은 저자인 경우',
+          style: TextStyle(color: AppColors.muted, fontSize: 13),
+        ),
+        const SizedBox(height: 10),
+        const Divider(color: AppColors.dim, height: 1),
+        const SizedBox(height: 8),
+        ...top30.map((e) {
           final authorBooks = e.value;
           return _AuthorBarRow(
             label: e.key,
@@ -80,6 +88,7 @@ class _AuthorBody extends StatelessWidget {
             onTap: () => _showModal(context, e.key, authorBooks),
           );
         }),
+        if (overflow > 0) _MoreRow(count: overflow),
       ],
     );
   }
@@ -182,6 +191,35 @@ class _AuthorBooksSheet extends StatelessWidget {
               },
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── 외 N명 행 ─────────────────────────────────────────────────────────────────
+
+class _MoreRow extends StatelessWidget {
+  final int count;
+  const _MoreRow({required this.count});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 90,
+            child: Text(
+              '외 $count명',
+              style: const TextStyle(color: AppColors.muted, fontSize: 12),
+            ),
+          ),
+          const SizedBox(width: 8),
+          const Expanded(child: SizedBox()),
+          const SizedBox(width: 8),
+          const SizedBox(width: 32),
         ],
       ),
     );
