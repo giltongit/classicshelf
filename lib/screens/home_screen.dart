@@ -11,10 +11,29 @@ import '../models/book.dart';
 import '../providers/providers.dart';
 import '../theme/app_theme.dart';
 
-class HomeScreen extends ConsumerWidget {
+class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
-  void _startEditing(BuildContext context, WidgetRef ref, String? current) {
+  @override
+  ConsumerState<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends ConsumerState<HomeScreen> {
+  Book? _wishlistBook;
+  bool _wishlistPicked = false;
+
+  void _tryPickWishlist(List<Book> books) {
+    if (_wishlistPicked) return;
+    final wishlist = books.where((b) => b.status == 'wishlist').toList();
+    if (wishlist.isNotEmpty) {
+      _wishlistBook = wishlist[Random().nextInt(wishlist.length)];
+      _wishlistPicked = true;
+    } else if (books.isNotEmpty) {
+      _wishlistPicked = true;
+    }
+  }
+
+  void _startEditing(String? current) {
     final controller = TextEditingController(text: current ?? '');
     showDialog<void>(
       context: context,
@@ -50,7 +69,7 @@ class HomeScreen extends ConsumerWidget {
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final books = switch (ref.watch(booksProvider)) {
       AsyncData(:final value) => value,
       _ => <Book>[],
@@ -63,6 +82,8 @@ class HomeScreen extends ConsumerWidget {
       AsyncData(:final value) => value,
       _ => null,
     };
+
+    _tryPickWishlist(books);
 
     // 오늘의 책: 미독 소장본 중 날짜 기반 랜덤
     final unreadOwned =
@@ -99,16 +120,6 @@ class HomeScreen extends ConsumerWidget {
     }
     topAuthor = best?.key;
 
-    // 가장 오래 기다린 희망도서
-    final wishlist = books.where((b) => b.status == 'wishlist').toList()
-      ..sort((a, b) {
-        final now = DateTime.now();
-        final aDays = now.difference(a.createdAt ?? now).inDays;
-        final bDays = now.difference(b.createdAt ?? now).inDays;
-        return bDays.compareTo(aDays);
-      });
-    final oldestWishlist = wishlist.isNotEmpty ? wishlist.first : null;
-
     final readCount = books.where((b) => b.isRead).length;
     final unreadCount = books.length - readCount;
 
@@ -144,7 +155,7 @@ class HomeScreen extends ConsumerWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildHeader(context, ref, libraryName, subtitleText),
+                  _buildHeader(libraryName, subtitleText),
                   const SizedBox(height: 28),
                   if (todayBook != null) ...[
                     _TodayBookCard(book: todayBook),
@@ -155,9 +166,9 @@ class HomeScreen extends ConsumerWidget {
                     unreadCount: unreadCount,
                     topAuthor: topAuthor,
                   ),
-                  if (oldestWishlist != null) ...[
+                  if (_wishlistBook != null) ...[
                     const SizedBox(height: 16),
-                    _WishlistCard(book: oldestWishlist),
+                    _WishlistCard(book: _wishlistBook!),
                   ],
                   const SizedBox(height: 32),
                 ],
@@ -169,12 +180,7 @@ class HomeScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildHeader(
-    BuildContext context,
-    WidgetRef ref,
-    String? libraryName,
-    String subtitleText,
-  ) {
+  Widget _buildHeader(String? libraryName, String subtitleText) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -210,7 +216,7 @@ class HomeScreen extends ConsumerWidget {
                     ),
             ),
             GestureDetector(
-              onTap: () => _startEditing(context, ref, libraryName),
+              onTap: () => _startEditing(libraryName),
               behavior: HitTestBehavior.opaque,
               child: const Padding(
                 padding: EdgeInsets.all(8),
@@ -223,8 +229,7 @@ class HomeScreen extends ConsumerWidget {
         const SizedBox(height: 4),
         Text(
           subtitleText,
-          style:
-              const TextStyle(color: Color(0xFFAA9F8F), fontSize: 12),
+          style: const TextStyle(color: Color(0xFFAA9F8F), fontSize: 12),
         ),
       ],
     );
@@ -338,8 +343,8 @@ class _SummaryCard extends StatelessWidget {
                   children: [
                     const Text(
                       '읽음',
-                      style:
-                          TextStyle(color: Color(0xFFAA9F8F), fontSize: 11),
+                      style: TextStyle(
+                          color: Color(0xFFAA9F8F), fontSize: 11),
                     ),
                     Text(
                       '$readCount권',
@@ -356,8 +361,8 @@ class _SummaryCard extends StatelessWidget {
                   children: [
                     const Text(
                       '미독',
-                      style:
-                          TextStyle(color: Color(0xFFAA9F8F), fontSize: 11),
+                      style: TextStyle(
+                          color: Color(0xFFAA9F8F), fontSize: 11),
                     ),
                     Text(
                       '$unreadCount권',
@@ -385,7 +390,7 @@ class _SummaryCard extends StatelessWidget {
   }
 }
 
-// ── 가장 오래 기다린 희망도서 카드 ──────────────────────────────────────────────
+// ── 기다린 지 오래된 책 카드 ───────────────────────────────────────────────────
 
 class _WishlistCard extends StatelessWidget {
   final Book book;
@@ -412,7 +417,7 @@ class _WishlistCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                '가장 오래 기다린 책',
+                '기다린 지 오래된 책',
                 style: TextStyle(
                     color: AppColors.gold,
                     fontSize: 11,
