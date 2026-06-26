@@ -128,11 +128,11 @@ class HomeScreen extends ConsumerWidget {
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
                 colors: [
+                  Colors.transparent,
                   Color(0x990F0E0C),
                   Color(0xCC0F0E0C),
-                  Color(0xFF0F0E0C),
                 ],
-                stops: [0.0, 0.5, 1.0],
+                stops: [0.0, 0.6, 1.0],
               ),
             ),
           ),
@@ -189,7 +189,7 @@ class HomeScreen extends ConsumerWidget {
                         const Text(
                           '나의 도서관',
                           style: TextStyle(
-                              color: AppColors.muted, fontSize: 12),
+                              color: Color(0xFFAA9F8F), fontSize: 12),
                         ),
                         Text(
                           libraryName,
@@ -204,7 +204,7 @@ class HomeScreen extends ConsumerWidget {
                   : const Text(
                       '나의 도서관',
                       style: TextStyle(
-                          color: AppColors.muted,
+                          color: Color(0xFFAA9F8F),
                           fontSize: 15,
                           fontWeight: FontWeight.w600),
                     ),
@@ -215,7 +215,7 @@ class HomeScreen extends ConsumerWidget {
               child: const Padding(
                 padding: EdgeInsets.all(8),
                 child: Icon(Icons.edit_outlined,
-                    size: 16, color: AppColors.muted),
+                    size: 16, color: Color(0xFFAA9F8F)),
               ),
             ),
           ],
@@ -224,7 +224,7 @@ class HomeScreen extends ConsumerWidget {
         Text(
           subtitleText,
           style:
-              const TextStyle(color: AppColors.muted, fontSize: 12),
+              const TextStyle(color: Color(0xFFAA9F8F), fontSize: 12),
         ),
       ],
     );
@@ -240,10 +240,12 @@ class _TodayBookCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Card(
-      color: AppColors.surface,
+      color: const Color(0xCC1A1915),
       elevation: 0,
-      shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: const BorderSide(color: Color(0x33C8A96E), width: 0.5),
+      ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: () => context.push('/books/${book.localId}'),
@@ -281,13 +283,13 @@ class _TodayBookCard extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                          color: AppColors.muted, fontSize: 12),
+                          color: Color(0xFFAA9F8F), fontSize: 12),
                     ),
                     const SizedBox(height: 8),
                     const Text(
                       '오늘 이 책은 어떤가요?',
                       style: TextStyle(
-                          color: AppColors.muted, fontSize: 11),
+                          color: Color(0xFFAA9F8F), fontSize: 11),
                     ),
                   ],
                 ),
@@ -318,10 +320,12 @@ class _SummaryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Card(
-      color: AppColors.surface,
+      color: const Color(0xCC1A1915),
       elevation: 0,
-      shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: const BorderSide(color: Color(0x33C8A96E), width: 0.5),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -335,7 +339,7 @@ class _SummaryCard extends StatelessWidget {
                     const Text(
                       '읽음',
                       style:
-                          TextStyle(color: AppColors.muted, fontSize: 11),
+                          TextStyle(color: Color(0xFFAA9F8F), fontSize: 11),
                     ),
                     Text(
                       '$readCount권',
@@ -353,7 +357,7 @@ class _SummaryCard extends StatelessWidget {
                     const Text(
                       '미독',
                       style:
-                          TextStyle(color: AppColors.muted, fontSize: 11),
+                          TextStyle(color: Color(0xFFAA9F8F), fontSize: 11),
                     ),
                     Text(
                       '$unreadCount권',
@@ -371,7 +375,7 @@ class _SummaryCard extends StatelessWidget {
               Text(
                 '가장 많이 만난 저자  $topAuthor',
                 style: const TextStyle(
-                    color: AppColors.muted, fontSize: 12),
+                    color: Color(0xFFAA9F8F), fontSize: 12),
               ),
             ],
           ],
@@ -393,10 +397,12 @@ class _WishlistCard extends StatelessWidget {
         DateTime.now().difference(book.createdAt ?? DateTime.now()).inDays + 1;
 
     return Card(
-      color: AppColors.surface,
+      color: const Color(0xCC1A1915),
       elevation: 0,
-      shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: const BorderSide(color: Color(0x33C8A96E), width: 0.5),
+      ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: () => context.push('/books/${book.localId}'),
@@ -438,13 +444,13 @@ class _WishlistCard extends StatelessWidget {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
-                              color: AppColors.muted, fontSize: 12),
+                              color: Color(0xFFAA9F8F), fontSize: 12),
                         ),
                         const SizedBox(height: 6),
                         Text(
                           '$waitDays일째 기다리는 중',
                           style: const TextStyle(
-                              color: AppColors.muted, fontSize: 11),
+                              color: Color(0xFFAA9F8F), fontSize: 11),
                         ),
                       ],
                     ),
