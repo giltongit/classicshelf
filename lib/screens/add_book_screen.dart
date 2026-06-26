@@ -336,14 +336,17 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
                 _Field(controller: _location,   label: '책장 위치'),
                 _Field(controller: _callNumber, label: '청구기호',
                     hint: '예) 813.6-한강-채'),
-                SwitchListTile(
-                  title: const Text('읽은 책',
-                      style: TextStyle(color: AppColors.cream, fontSize: 14)),
-                  value: _isRead,
-                  onChanged: (v) => setState(() => _isRead = v),
-                  activeThumbColor: AppColors.gold,
-                  dense: true,
-                  contentPadding: EdgeInsets.zero,
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    const Text('읽은 책',
+                        style: TextStyle(color: AppColors.cream, fontSize: 14)),
+                    Switch(
+                      value: _isRead,
+                      onChanged: (v) => setState(() => _isRead = v),
+                      activeThumbColor: AppColors.gold,
+                    ),
+                  ],
                 ),
                 _Field(controller: _review,    label: '메모', maxLines: 3),
                 const SizedBox(height: 24),
