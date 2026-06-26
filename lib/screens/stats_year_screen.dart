@@ -62,9 +62,10 @@ class _YearBody extends StatelessWidget {
     // 범위: [upperYear .. minYear] 내림차순 (미래 연도 책도 포함)
     final currentYear = DateTime.now().year;
     final rows = <_YearEntry>[];
+    final int? minYear =
+        yearMap.isEmpty ? null : yearMap.keys.reduce(min);
 
-    if (yearMap.isNotEmpty) {
-      final minYear = yearMap.keys.reduce(min);
+    if (minYear != null) {
       final upperYear = max(currentYear, yearMap.keys.reduce(max));
       for (var y = upperYear; y >= minYear; y--) {
         final yBooks = yearMap[y] ?? [];
@@ -84,20 +85,27 @@ class _YearBody extends StatelessWidget {
     final maxVal =
         rows.map((r) => r.count).fold(0, (a, b) => a > b ? a : b);
 
-    return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
-      itemCount: rows.length,
-      itemBuilder: (_, i) {
-        final r = rows[i];
-        return _YearBarRow(
-          label: r.label,
-          count: r.count,
-          ratio: (maxVal > 0 && r.count > 0) ? r.count / maxVal : 0,
-          onTap: r.count > 0
-              ? () => _showModal(context, r.label, r.yearBooks)
-              : null,
-        );
-      },
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+      children: [
+        if (minYear != null) ...[
+          Text(
+            '$minYear년부터 올해까지',
+            style: const TextStyle(color: AppColors.muted, fontSize: 13),
+          ),
+          const SizedBox(height: 10),
+          const Divider(color: AppColors.dim, height: 1),
+          const SizedBox(height: 8),
+        ],
+        ...rows.map((r) => _YearBarRow(
+              label: r.label,
+              count: r.count,
+              ratio: (maxVal > 0 && r.count > 0) ? r.count / maxVal : 0,
+              onTap: r.count > 0
+                  ? () => _showModal(context, r.label, r.yearBooks)
+                  : null,
+            )),
+      ],
     );
   }
 
