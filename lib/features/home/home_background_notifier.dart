@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:math';
 
+import 'package:flutter/painting.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
@@ -59,6 +60,8 @@ class HomeBackgroundNotifier extends AsyncNotifier<HomeBgState> {
       }
     }
     if (!written) return;
+
+    imageCache.evict(FileImage(File(destPath)));
 
     final prev = switch (state) {
       AsyncData(:final value) => value,
