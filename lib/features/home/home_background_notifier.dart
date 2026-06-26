@@ -1,53 +1,95 @@
 import 'dart:io';
+import 'dart:math';
 
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 
-class HomeBackgroundNotifier extends AsyncNotifier<String?> {
-  static const _fileName = 'home_bg.webp';
+typedef HomeBgState = ({List<String?> slotPaths, String? current});
+
+class HomeBackgroundNotifier extends AsyncNotifier<HomeBgState> {
+  static const _slotCount = 3;
+
+  static String _fileName(int slot) => 'home_bg_$slot.webp';
 
   @override
-  Future<String?> build() async {
+  Future<HomeBgState> build() async {
     final dir = await getApplicationDocumentsDirectory();
-    final file = File('${dir.path}/$_fileName');
-    return file.existsSync() ? file.path : null;
+    final slotPaths = _readSlots(dir.path);
+    final filled = slotPaths.whereType<String>().toList();
+    final current =
+        filled.isEmpty ? null : filled[Random().nextInt(filled.length)];
+    return (slotPaths: slotPaths, current: current);
   }
 
-  Future<void> pickAndSave() async {
+  Future<void> addOrReplace(int slot) async {
     final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
     if (picked == null) return;
 
     final dir = await getApplicationDocumentsDirectory();
-    final destPath = '${dir.path}/$_fileName';
+    final destPath = '${dir.path}/${_fileName(slot)}';
 
+    bool written = false;
     for (final q in [80, 60, 40]) {
       final bytes = await FlutterImageCompress.compressWithFile(
         picked.path,
         format: CompressFormat.webp,
         quality: q,
         minWidth: 1080,
-        minHeight: 1920,
       );
       if (bytes == null) break;
       if (bytes.length <= 500 * 1024 || q == 40) {
         await File(destPath).writeAsBytes(bytes);
-        state = AsyncData(destPath);
-        return;
+        written = true;
+        break;
       }
     }
+    if (!written) return;
+
+    final prev = switch (state) {
+      AsyncData(:final value) => value,
+      _ => (slotPaths: List<String?>.filled(_slotCount, null), current: null),
+    };
+
+    state = AsyncData((
+      slotPaths: _readSlots(dir.path),
+      current: prev.current ?? destPath,
+    ));
   }
 
-  Future<void> remove() async {
+  Future<void> remove(int slot) async {
     final dir = await getApplicationDocumentsDirectory();
-    final file = File('${dir.path}/$_fileName');
+    final filePath = '${dir.path}/${_fileName(slot)}';
+    final file = File(filePath);
     if (file.existsSync()) file.deleteSync();
-    state = const AsyncData(null);
+
+    final prev = switch (state) {
+      AsyncData(:final value) => value,
+      _ => (slotPaths: List<String?>.filled(_slotCount, null), current: null),
+    };
+
+    final newSlotPaths = _readSlots(dir.path);
+    final filled = newSlotPaths.whereType<String>().toList();
+
+    String? newCurrent = prev.current;
+    if (prev.current == filePath) {
+      newCurrent =
+          filled.isEmpty ? null : filled[Random().nextInt(filled.length)];
+    }
+
+    state = AsyncData((slotPaths: newSlotPaths, current: newCurrent));
+  }
+
+  List<String?> _readSlots(String dirPath) {
+    return List.generate(_slotCount, (i) {
+      final file = File('$dirPath/${_fileName(i)}');
+      return file.existsSync() ? file.path : null;
+    });
   }
 }
 
 final homeBackgroundProvider =
-    AsyncNotifierProvider<HomeBackgroundNotifier, String?>(
+    AsyncNotifierProvider<HomeBackgroundNotifier, HomeBgState>(
   HomeBackgroundNotifier.new,
 );

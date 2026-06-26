@@ -19,10 +19,13 @@ class SettingsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final imagePath = switch (ref.watch(homeBackgroundProvider)) {
+    final bgState = switch (ref.watch(homeBackgroundProvider)) {
       AsyncData(:final value) => value,
       _ => null,
     };
+    final slotPaths =
+        bgState?.slotPaths ?? const <String?>[null, null, null];
+    final notifier = ref.read(homeBackgroundProvider.notifier);
 
     return Scaffold(
       appBar: AppBar(title: const Text('설정')),
@@ -31,63 +34,32 @@ class SettingsScreen extends ConsumerWidget {
           const _SectionHeader('홈 배경 이미지'),
           Padding(
             padding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: SizedBox(
-                    width: 100,
-                    height: 60,
-                    child: imagePath != null
-                        ? Image.file(File(imagePath), fit: BoxFit.cover)
-                        : Container(
-                            color: AppColors.surface3,
-                            alignment: Alignment.center,
-                            child: const Text(
-                              '기본 배경',
-                              style: TextStyle(
-                                  color: AppColors.muted, fontSize: 11),
-                            ),
-                          ),
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                Row(
                   children: [
-                    OutlinedButton(
-                      onPressed: () => ref
-                          .read(homeBackgroundProvider.notifier)
-                          .pickAndSave(),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: AppColors.gold,
-                        side: const BorderSide(color: AppColors.gold),
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 8),
-                        minimumSize: Size.zero,
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      ),
-                      child: const Text('이미지 변경'),
+                    Expanded(
+                      child: _BgSlot(
+                          slot: 0, path: slotPaths[0], notifier: notifier),
                     ),
-                    if (imagePath != null) ...[
-                      const SizedBox(height: 8),
-                      OutlinedButton(
-                        onPressed: () =>
-                            ref.read(homeBackgroundProvider.notifier).remove(),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: AppColors.muted,
-                          side: const BorderSide(color: AppColors.dim),
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 16, vertical: 8),
-                          minimumSize: Size.zero,
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        ),
-                        child: const Text('배경 제거'),
-                      ),
-                    ],
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _BgSlot(
+                          slot: 1, path: slotPaths[1], notifier: notifier),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _BgSlot(
+                          slot: 2, path: slotPaths[2], notifier: notifier),
+                    ),
                   ],
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  '앱을 열 때마다 등록된 사진 중 하나가 배경으로 표시됩니다',
+                  style: TextStyle(color: AppColors.muted, fontSize: 11),
                 ),
               ],
             ),
@@ -237,6 +209,82 @@ class _SettingsTile extends StatelessWidget {
       subtitle: Text(subtitle, style: const TextStyle(color: AppColors.muted, fontSize: 12)),
       trailing: const Icon(Icons.chevron_right, color: AppColors.dim),
       onTap: onTap,
+    );
+  }
+}
+
+class _BgSlot extends StatelessWidget {
+  final int slot;
+  final String? path;
+  final HomeBackgroundNotifier notifier;
+  const _BgSlot(
+      {required this.slot, required this.path, required this.notifier});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 120,
+      child: path != null ? _filled(path!) : _empty(),
+    );
+  }
+
+  Widget _filled(String imagePath) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(8),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Image.file(File(imagePath), fit: BoxFit.cover),
+          Positioned(
+            right: 0,
+            bottom: 0,
+            child: Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+              decoration: const BoxDecoration(
+                color: Color(0xB3000000),
+                borderRadius:
+                    BorderRadius.only(topLeft: Radius.circular(6)),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  GestureDetector(
+                    onTap: () => notifier.addOrReplace(slot),
+                    child: const Padding(
+                      padding: EdgeInsets.all(4),
+                      child: Icon(Icons.swap_horiz,
+                          color: Colors.white, size: 16),
+                    ),
+                  ),
+                  GestureDetector(
+                    onTap: () => notifier.remove(slot),
+                    child: const Padding(
+                      padding: EdgeInsets.all(4),
+                      child: Icon(Icons.delete_outline,
+                          color: Colors.white, size: 16),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _empty() {
+    return GestureDetector(
+      onTap: () => notifier.addOrReplace(slot),
+      child: Container(
+        decoration: BoxDecoration(
+          border: Border.all(color: AppColors.muted),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        alignment: Alignment.center,
+        child: const Icon(Icons.add, color: AppColors.muted, size: 28),
+      ),
     );
   }
 }

@@ -79,7 +79,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       _ => null,
     };
     final imagePath = switch (ref.watch(homeBackgroundProvider)) {
-      AsyncData(:final value) => value,
+      AsyncData(:final value) => value.current,
       _ => null,
     };
 
