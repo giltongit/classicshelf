@@ -207,7 +207,7 @@ class _StatusBadge extends StatelessWidget {
     final (label, fg, bg) = switch (status) {
       'owned'    => ('소장', AppColors.gold,  AppColors.goldSubtle),
       'wishlist' => ('희망', AppColors.muted, AppColors.mutedSubtle),
-      'rental'   => ('대여', AppColors.muted, AppColors.mutedSubtle),
+      'rental'   => ('대여', const Color(0xFF5B7FA6), const Color(0x265B7FA6)),
       _          => ('기타', AppColors.muted, AppColors.mutedSubtle),
     };
     return Container(
