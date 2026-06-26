@@ -9,7 +9,11 @@ import '../screens/csv_import_screen.dart';
 import '../screens/main_scaffold.dart';
 import '../screens/scan_screen.dart';
 import '../screens/settings_screen.dart';
+import '../screens/stats_author_screen.dart';
+import '../screens/stats_monthly_screen.dart';
 import '../screens/stats_screen.dart';
+import '../screens/stats_wishlist_screen.dart';
+import '../screens/stats_year_screen.dart';
 
 final appRouter = GoRouter(
   initialLocation: '/',
@@ -29,6 +33,24 @@ final appRouter = GoRouter(
           GoRoute(
             path: '/stats',
             builder: (context, state) => const StatsScreen(),
+            routes: [
+              GoRoute(
+                path: 'year',
+                builder: (context, state) => const StatsYearScreen(),
+              ),
+              GoRoute(
+                path: 'author',
+                builder: (context, state) => const StatsAuthorScreen(),
+              ),
+              GoRoute(
+                path: 'monthly',
+                builder: (context, state) => const StatsMonthlyScreen(),
+              ),
+              GoRoute(
+                path: 'wishlist',
+                builder: (context, state) => const StatsWishlistScreen(),
+              ),
+            ],
           ),
         ]),
         StatefulShellBranch(routes: [
