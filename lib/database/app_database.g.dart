@@ -221,6 +221,17 @@ class $BooksTable extends Books with TableInfo<$BooksTable, BookData> {
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _acquiredAtMeta = const VerificationMeta(
+    'acquiredAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> acquiredAt = GeneratedColumn<DateTime>(
+    'acquired_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -267,6 +278,7 @@ class $BooksTable extends Books with TableInfo<$BooksTable, BookData> {
     medium,
     language,
     callNumber,
+    acquiredAt,
     createdAt,
     updatedAt,
   ];
@@ -411,6 +423,12 @@ class $BooksTable extends Books with TableInfo<$BooksTable, BookData> {
         callNumber.isAcceptableOrUnknown(data['call_number']!, _callNumberMeta),
       );
     }
+    if (data.containsKey('acquired_at')) {
+      context.handle(
+        _acquiredAtMeta,
+        acquiredAt.isAcceptableOrUnknown(data['acquired_at']!, _acquiredAtMeta),
+      );
+    }
     if (data.containsKey('created_at')) {
       context.handle(
         _createdAtMeta,
@@ -512,6 +530,10 @@ class $BooksTable extends Books with TableInfo<$BooksTable, BookData> {
         DriftSqlType.string,
         data['${effectivePrefix}call_number'],
       ),
+      acquiredAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}acquired_at'],
+      ),
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
@@ -550,6 +572,7 @@ class BookData extends DataClass implements Insertable<BookData> {
   final String medium;
   final String? language;
   final String? callNumber;
+  final DateTime? acquiredAt;
   final DateTime createdAt;
   final DateTime updatedAt;
   const BookData({
@@ -573,6 +596,7 @@ class BookData extends DataClass implements Insertable<BookData> {
     required this.medium,
     this.language,
     this.callNumber,
+    this.acquiredAt,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -623,6 +647,9 @@ class BookData extends DataClass implements Insertable<BookData> {
     if (!nullToAbsent || callNumber != null) {
       map['call_number'] = Variable<String>(callNumber);
     }
+    if (!nullToAbsent || acquiredAt != null) {
+      map['acquired_at'] = Variable<DateTime>(acquiredAt);
+    }
     map['created_at'] = Variable<DateTime>(createdAt);
     map['updated_at'] = Variable<DateTime>(updatedAt);
     return map;
@@ -670,6 +697,9 @@ class BookData extends DataClass implements Insertable<BookData> {
       callNumber: callNumber == null && nullToAbsent
           ? const Value.absent()
           : Value(callNumber),
+      acquiredAt: acquiredAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(acquiredAt),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
     );
@@ -701,6 +731,7 @@ class BookData extends DataClass implements Insertable<BookData> {
       medium: serializer.fromJson<String>(json['medium']),
       language: serializer.fromJson<String?>(json['language']),
       callNumber: serializer.fromJson<String?>(json['callNumber']),
+      acquiredAt: serializer.fromJson<DateTime?>(json['acquiredAt']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
     );
@@ -729,6 +760,7 @@ class BookData extends DataClass implements Insertable<BookData> {
       'medium': serializer.toJson<String>(medium),
       'language': serializer.toJson<String?>(language),
       'callNumber': serializer.toJson<String?>(callNumber),
+      'acquiredAt': serializer.toJson<DateTime?>(acquiredAt),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
     };
@@ -755,6 +787,7 @@ class BookData extends DataClass implements Insertable<BookData> {
     String? medium,
     Value<String?> language = const Value.absent(),
     Value<String?> callNumber = const Value.absent(),
+    Value<DateTime?> acquiredAt = const Value.absent(),
     DateTime? createdAt,
     DateTime? updatedAt,
   }) => BookData(
@@ -778,6 +811,7 @@ class BookData extends DataClass implements Insertable<BookData> {
     medium: medium ?? this.medium,
     language: language.present ? language.value : this.language,
     callNumber: callNumber.present ? callNumber.value : this.callNumber,
+    acquiredAt: acquiredAt.present ? acquiredAt.value : this.acquiredAt,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
   );
@@ -811,6 +845,9 @@ class BookData extends DataClass implements Insertable<BookData> {
       callNumber: data.callNumber.present
           ? data.callNumber.value
           : this.callNumber,
+      acquiredAt: data.acquiredAt.present
+          ? data.acquiredAt.value
+          : this.acquiredAt,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
@@ -839,6 +876,7 @@ class BookData extends DataClass implements Insertable<BookData> {
           ..write('medium: $medium, ')
           ..write('language: $language, ')
           ..write('callNumber: $callNumber, ')
+          ..write('acquiredAt: $acquiredAt, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
@@ -867,6 +905,7 @@ class BookData extends DataClass implements Insertable<BookData> {
     medium,
     language,
     callNumber,
+    acquiredAt,
     createdAt,
     updatedAt,
   ]);
@@ -894,6 +933,7 @@ class BookData extends DataClass implements Insertable<BookData> {
           other.medium == this.medium &&
           other.language == this.language &&
           other.callNumber == this.callNumber &&
+          other.acquiredAt == this.acquiredAt &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt);
 }
@@ -919,6 +959,7 @@ class BooksCompanion extends UpdateCompanion<BookData> {
   final Value<String> medium;
   final Value<String?> language;
   final Value<String?> callNumber;
+  final Value<DateTime?> acquiredAt;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
   const BooksCompanion({
@@ -942,6 +983,7 @@ class BooksCompanion extends UpdateCompanion<BookData> {
     this.medium = const Value.absent(),
     this.language = const Value.absent(),
     this.callNumber = const Value.absent(),
+    this.acquiredAt = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
   });
@@ -966,6 +1008,7 @@ class BooksCompanion extends UpdateCompanion<BookData> {
     this.medium = const Value.absent(),
     this.language = const Value.absent(),
     this.callNumber = const Value.absent(),
+    this.acquiredAt = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
   }) : userId = Value(userId),
@@ -992,6 +1035,7 @@ class BooksCompanion extends UpdateCompanion<BookData> {
     Expression<String>? medium,
     Expression<String>? language,
     Expression<String>? callNumber,
+    Expression<DateTime>? acquiredAt,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
   }) {
@@ -1016,6 +1060,7 @@ class BooksCompanion extends UpdateCompanion<BookData> {
       if (medium != null) 'medium': medium,
       if (language != null) 'language': language,
       if (callNumber != null) 'call_number': callNumber,
+      if (acquiredAt != null) 'acquired_at': acquiredAt,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
     });
@@ -1042,6 +1087,7 @@ class BooksCompanion extends UpdateCompanion<BookData> {
     Value<String>? medium,
     Value<String?>? language,
     Value<String?>? callNumber,
+    Value<DateTime?>? acquiredAt,
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
   }) {
@@ -1066,6 +1112,7 @@ class BooksCompanion extends UpdateCompanion<BookData> {
       medium: medium ?? this.medium,
       language: language ?? this.language,
       callNumber: callNumber ?? this.callNumber,
+      acquiredAt: acquiredAt ?? this.acquiredAt,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
@@ -1134,6 +1181,9 @@ class BooksCompanion extends UpdateCompanion<BookData> {
     if (callNumber.present) {
       map['call_number'] = Variable<String>(callNumber.value);
     }
+    if (acquiredAt.present) {
+      map['acquired_at'] = Variable<DateTime>(acquiredAt.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
@@ -1166,6 +1216,7 @@ class BooksCompanion extends UpdateCompanion<BookData> {
           ..write('medium: $medium, ')
           ..write('language: $language, ')
           ..write('callNumber: $callNumber, ')
+          ..write('acquiredAt: $acquiredAt, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
@@ -1563,6 +1614,7 @@ typedef $$BooksTableCreateCompanionBuilder =
       Value<String> medium,
       Value<String?> language,
       Value<String?> callNumber,
+      Value<DateTime?> acquiredAt,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
     });
@@ -1588,6 +1640,7 @@ typedef $$BooksTableUpdateCompanionBuilder =
       Value<String> medium,
       Value<String?> language,
       Value<String?> callNumber,
+      Value<DateTime?> acquiredAt,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
     });
@@ -1697,6 +1750,11 @@ class $$BooksTableFilterComposer extends Composer<_$AppDatabase, $BooksTable> {
 
   ColumnFilters<String> get callNumber => $composableBuilder(
     column: $table.callNumber,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get acquiredAt => $composableBuilder(
+    column: $table.acquiredAt,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -1820,6 +1878,11 @@ class $$BooksTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<DateTime> get acquiredAt => $composableBuilder(
+    column: $table.acquiredAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
@@ -1908,6 +1971,11 @@ class $$BooksTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<DateTime> get acquiredAt => $composableBuilder(
+    column: $table.acquiredAt,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
 
@@ -1963,6 +2031,7 @@ class $$BooksTableTableManager
                 Value<String> medium = const Value.absent(),
                 Value<String?> language = const Value.absent(),
                 Value<String?> callNumber = const Value.absent(),
+                Value<DateTime?> acquiredAt = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
               }) => BooksCompanion(
@@ -1986,6 +2055,7 @@ class $$BooksTableTableManager
                 medium: medium,
                 language: language,
                 callNumber: callNumber,
+                acquiredAt: acquiredAt,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
               ),
@@ -2011,6 +2081,7 @@ class $$BooksTableTableManager
                 Value<String> medium = const Value.absent(),
                 Value<String?> language = const Value.absent(),
                 Value<String?> callNumber = const Value.absent(),
+                Value<DateTime?> acquiredAt = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
               }) => BooksCompanion.insert(
@@ -2034,6 +2105,7 @@ class $$BooksTableTableManager
                 medium: medium,
                 language: language,
                 callNumber: callNumber,
+                acquiredAt: acquiredAt,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
               ),

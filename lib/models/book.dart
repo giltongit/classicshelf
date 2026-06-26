@@ -27,6 +27,7 @@ class Book {
   final String medium;
   final String? language;
   final String? callNumber;
+  final DateTime? acquiredAt;
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
@@ -51,9 +52,13 @@ class Book {
     this.medium = 'paper',
     this.language,
     this.callNumber,
+    this.acquiredAt,
     this.createdAt,
     this.updatedAt,
   });
+
+  // acquiredAt은 null로 명시 설정(날짜 지우기)이 필요하므로 sentinel 패턴 사용.
+  static const _absent = Object();
 
   Book copyWith({
     int? localId,
@@ -76,6 +81,7 @@ class Book {
     String? medium,
     String? language,
     String? callNumber,
+    Object? acquiredAt = _absent,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) =>
@@ -100,6 +106,7 @@ class Book {
         medium: medium ?? this.medium,
         language: language ?? this.language,
         callNumber: callNumber ?? this.callNumber,
+        acquiredAt: acquiredAt == _absent ? this.acquiredAt : acquiredAt as DateTime?,
         createdAt: createdAt ?? this.createdAt,
         updatedAt: updatedAt ?? this.updatedAt,
       );
@@ -126,6 +133,7 @@ class Book {
         'medium': medium,
         if (language != null) 'language': language,
         if (callNumber != null) 'call_number': callNumber,
+        if (acquiredAt != null) 'acquired_at': _formatDate(acquiredAt!),
       };
 
   /// Supabase UPDATE 페이로드. updated_at을 수동 갱신(트리거 없음).
@@ -147,6 +155,7 @@ class Book {
         'medium': medium,
         'language': language,
         'call_number': callNumber,
+        'acquired_at': acquiredAt != null ? _formatDate(acquiredAt!) : null,
         'updated_at': DateTime.now().toUtc().toIso8601String(),
       };
 
@@ -172,6 +181,7 @@ class Book {
         medium: (json['medium'] as String?) ?? 'paper',
         language: json['language'] as String?,
         callNumber: json['call_number'] as String?,
+        acquiredAt: _parseDateTime(json['acquired_at']),
         createdAt: _parseDateTime(json['created_at']),
         updatedAt: _parseDateTime(json['updated_at']),
       );
@@ -180,4 +190,7 @@ class Book {
     if (value == null) return null;
     return DateTime.parse(value as String);
   }
+
+  static String _formatDate(DateTime d) =>
+      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 }

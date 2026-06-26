@@ -30,6 +30,7 @@ class Books extends Table {
   TextColumn get medium => text().withDefault(const Constant('paper'))();
   TextColumn get language => text().nullable()();
   TextColumn get callNumber => text().nullable()();
+  DateTimeColumn get acquiredAt => dateTime().nullable()();
   DateTimeColumn get createdAt =>
       dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get updatedAt =>
@@ -53,7 +54,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -69,6 +70,9 @@ class AppDatabase extends _$AppDatabase {
             await m.addColumn(books, books.medium);
             await m.addColumn(books, books.language);
             await m.addColumn(books, books.callNumber);
+          }
+          if (from < 5) {
+            await m.addColumn(books, books.acquiredAt);
           }
         },
       );

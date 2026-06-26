@@ -476,6 +476,8 @@ class BookRepositoryImpl implements BookRepository {
       'medium': book.medium,
       if (book.language != null) 'language': book.language,
       if (book.callNumber != null) 'call_number': book.callNumber,
+      if (book.acquiredAt != null)
+        'acquired_at': '${book.acquiredAt!.year}-${book.acquiredAt!.month.toString().padLeft(2, '0')}-${book.acquiredAt!.day.toString().padLeft(2, '0')}',
     });
   }
 
@@ -503,6 +505,7 @@ class BookRepositoryImpl implements BookRepository {
         medium: d.medium,
         language: d.language,
         callNumber: d.callNumber,
+        acquiredAt: d.acquiredAt,
         createdAt: d.createdAt,
         updatedAt: d.updatedAt,
       );
@@ -527,6 +530,7 @@ class BookRepositoryImpl implements BookRepository {
         medium: Value(b.medium),
         language: Value(b.language),
         callNumber: Value(b.callNumber),
+        acquiredAt: Value(b.acquiredAt),
         createdAt:
             b.createdAt != null ? Value(b.createdAt!) : const Value.absent(),
         updatedAt:

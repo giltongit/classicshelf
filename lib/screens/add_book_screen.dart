@@ -42,6 +42,7 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
   late String _status;
   bool _isRead = false;
   String _medium = 'paper';
+  DateTime? _acquiredAt;
   File? _localCoverFile;
   String? _coverUrl;
   bool _saving = false;
@@ -65,6 +66,7 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
     _status     = b?.status ?? 'owned';
     _isRead     = b?.isRead ?? false;
     _medium     = b?.medium ?? 'paper';
+    _acquiredAt = b?.acquiredAt;
     _coverUrl   = b?.coverUrl ?? s?.thumbnailUrl;
   }
 
@@ -132,21 +134,32 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
       final userId = ref.read(supabaseClientProvider).auth.currentUser?.id ?? '';
 
       if (_isEdit) {
-        // 수정 모드
-        Book result = await repo.updateBook(widget.editBook!.copyWith(
+        // 수정 모드: 명시적 생성으로 nullable 필드 지우기(null 설정) 지원
+        final base = widget.editBook!;
+        Book result = await repo.updateBook(Book(
+          localId:    base.localId,
+          supabaseId: base.supabaseId,
+          userId:     base.userId,
           title:      _title.text.trim(),
           author:     _author.text.trim(),
           isbn:       _isbn.text.trim().isEmpty ? null : _isbn.text.trim(),
-          publisher:  _publisher.text.trim().isEmpty ? null : _publisher.text.trim(),
+          coverUrl:   _coverUrl,
+          description: base.description,
+          status:     _status,
+          review:     _review.text.trim(),
+          pageCount:  base.pageCount,
           year:       _year.text.trim().isEmpty ? null : _year.text.trim(),
           genre:      _genre.text.trim().isEmpty ? null : _genre.text.trim(),
+          publisher:  _publisher.text.trim().isEmpty ? null : _publisher.text.trim(),
           location:   _location.text.trim().isEmpty ? null : _location.text.trim(),
-          callNumber: _callNumber.text.trim().isEmpty ? null : _callNumber.text.trim(),
-          review:     _review.text.trim(),
-          status:     _status,
+          priorityRead: base.priorityRead,
           isRead:     _isRead,
           medium:     _medium,
-          coverUrl:   _coverUrl,
+          language:   base.language,
+          callNumber: _callNumber.text.trim().isEmpty ? null : _callNumber.text.trim(),
+          acquiredAt: _acquiredAt,
+          createdAt:  base.createdAt,
+          updatedAt:  base.updatedAt,
         ));
 
         if (_localCoverFile != null) {
@@ -169,6 +182,7 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
           isRead:     _isRead,
           medium:     _medium,
           coverUrl:   _coverUrl, // thumbnailUrl(scan) 또는 null
+          acquiredAt: _acquiredAt,
         ));
         debugPrint('[SAVE] addBook 반환: localId=${created.localId} supabaseId=${created.supabaseId}');
 
@@ -336,6 +350,11 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
                 _Field(controller: _location,   label: '책장 위치'),
                 _Field(controller: _callNumber, label: '청구기호',
                     hint: '예) 813.6-한강-채'),
+                _DatePickerField(
+                  label: '책 만난 날 (선택 사항)',
+                  value: _acquiredAt,
+                  onChanged: (d) => setState(() => _acquiredAt = d),
+                ),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
@@ -511,6 +530,84 @@ class _MediumSelector extends StatelessWidget {
             children: const [Text('종이책'), Text('전자책'), Text('오디오북')],
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _DatePickerField extends StatelessWidget {
+  final String label;
+  final DateTime? value;
+  final ValueChanged<DateTime?> onChanged;
+
+  const _DatePickerField({
+    required this.label,
+    required this.value,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final display = value != null
+        ? '${value!.year}년 ${value!.month}월 ${value!.day}일'
+        : label;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: () async {
+          final picked = await showDatePicker(
+            context: context,
+            initialDate: value ?? DateTime.now(),
+            firstDate: DateTime(1900),
+            lastDate: DateTime.now(),
+            builder: (ctx, child) => Theme(
+              data: Theme.of(ctx).copyWith(
+                colorScheme: Theme.of(ctx).colorScheme.copyWith(
+                  primary: AppColors.gold,
+                  onPrimary: AppColors.bg,
+                  surface: AppColors.surface2,
+                  onSurface: AppColors.cream,
+                ),
+              ),
+              child: child!,
+            ),
+          );
+          if (picked != null) onChanged(picked);
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 15),
+          decoration: BoxDecoration(
+            color: AppColors.surface2,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: AppColors.dim),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  display,
+                  style: TextStyle(
+                    color: value != null ? AppColors.cream : AppColors.muted,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+              if (value != null)
+                GestureDetector(
+                  onTap: () => onChanged(null),
+                  child: const Padding(
+                    padding: EdgeInsets.only(left: 8),
+                    child: Icon(Icons.clear, color: AppColors.muted, size: 18),
+                  ),
+                )
+              else
+                const Icon(Icons.calendar_today_outlined,
+                    color: AppColors.muted, size: 18),
+            ],
+          ),
+        ),
       ),
     );
   }

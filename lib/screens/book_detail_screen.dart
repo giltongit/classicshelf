@@ -169,9 +169,13 @@ class _BookDetailBody extends StatelessWidget {
   }
 
   List<Widget> _infoRows(Book b) {
+    final acquiredStr = b.acquiredAt != null
+        ? '${b.acquiredAt!.year}년 ${b.acquiredAt!.month}월 ${b.acquiredAt!.day}일'
+        : null;
     final pairs = <(String, String?)>[
       ('출판연도', b.year),
       ('출판사',   b.publisher),
+      ('책 만난 날', acquiredStr),
       ('책장 위치', b.location),
       ('청구기호', b.callNumber),
       ('ISBN',   b.isbn),
