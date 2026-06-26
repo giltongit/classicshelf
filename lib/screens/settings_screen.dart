@@ -1,8 +1,11 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:go_router/go_router.dart';
 
+import '../features/home/home_background_notifier.dart';
 import '../providers/providers.dart';
 import '../services/csv_export_service.dart';
 import '../theme/app_theme.dart';
@@ -16,10 +19,79 @@ class SettingsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final imagePath = switch (ref.watch(homeBackgroundProvider)) {
+      AsyncData(:final value) => value,
+      _ => null,
+    };
+
     return Scaffold(
       appBar: AppBar(title: const Text('설정')),
       body: ListView(
         children: [
+          const _SectionHeader('홈 배경 이미지'),
+          Padding(
+            padding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: SizedBox(
+                    width: 100,
+                    height: 60,
+                    child: imagePath != null
+                        ? Image.file(File(imagePath), fit: BoxFit.cover)
+                        : Container(
+                            color: AppColors.surface3,
+                            alignment: Alignment.center,
+                            child: const Text(
+                              '기본 배경',
+                              style: TextStyle(
+                                  color: AppColors.muted, fontSize: 11),
+                            ),
+                          ),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    OutlinedButton(
+                      onPressed: () => ref
+                          .read(homeBackgroundProvider.notifier)
+                          .pickAndSave(),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppColors.gold,
+                        side: const BorderSide(color: AppColors.gold),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 8),
+                        minimumSize: Size.zero,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                      child: const Text('이미지 변경'),
+                    ),
+                    if (imagePath != null) ...[
+                      const SizedBox(height: 8),
+                      OutlinedButton(
+                        onPressed: () =>
+                            ref.read(homeBackgroundProvider.notifier).remove(),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppColors.muted,
+                          side: const BorderSide(color: AppColors.dim),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 8),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        child: const Text('배경 제거'),
+                      ),
+                    ],
+                  ],
+                ),
+              ],
+            ),
+          ),
           const _SectionHeader('데이터'),
           _SettingsTile(
             icon: Icons.download_outlined,

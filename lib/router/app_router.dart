@@ -6,6 +6,7 @@ import '../screens/add_book_screen.dart';
 import '../screens/book_detail_screen.dart';
 import '../screens/book_list_screen.dart';
 import '../screens/csv_import_screen.dart';
+import '../screens/home_screen.dart';
 import '../screens/main_scaffold.dart';
 import '../screens/scan_screen.dart';
 import '../screens/settings_screen.dart';
@@ -16,13 +17,19 @@ import '../screens/stats_wishlist_screen.dart';
 import '../screens/stats_year_screen.dart';
 
 final appRouter = GoRouter(
-  initialLocation: '/',
+  initialLocation: '/home',
   routes: [
-    // ── 하단 탭 3개 (서가 / 통계 / 설정) ────────────────────────────────────
+    // ── 하단 탭 4개 (홈 / 서가 / 통계 / 설정) ────────────────────────────────
     StatefulShellRoute.indexedStack(
       builder: (context, state, navigationShell) =>
           MainScaffold(navigationShell: navigationShell),
       branches: [
+        StatefulShellBranch(routes: [
+          GoRoute(
+            path: '/home',
+            builder: (context, state) => const HomeScreen(),
+          ),
+        ]),
         StatefulShellBranch(routes: [
           GoRoute(
             path: '/',
