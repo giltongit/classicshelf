@@ -128,6 +128,7 @@ class _Section1AntiLibrary extends StatelessWidget {
     final owned = books.where((b) => b.status == 'owned').length;
     final wishlist = books.where((b) => b.status == 'wishlist').length;
     final rental = books.where((b) => b.status == 'rental').length;
+    final priority = books.where((b) => b.priorityRead).length;
 
     final message = _message(unread, total);
 
@@ -180,11 +181,41 @@ class _Section1AntiLibrary extends StatelessWidget {
           const SizedBox(height: 16),
           Row(
             children: [
-              _CountChip(label: '소장', count: owned),
-              const SizedBox(width: 8),
-              _CountChip(label: '희망', count: wishlist),
-              const SizedBox(width: 8),
-              _CountChip(label: '대여', count: rental),
+              Expanded(
+                child: _CountChip(
+                  label: '소장',
+                  count: owned,
+                  fg: AppColors.gold,
+                  bg: AppColors.goldSubtle,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: _CountChip(
+                  label: '희망',
+                  count: wishlist,
+                  fg: AppColors.muted,
+                  bg: AppColors.mutedSubtle,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: _CountChip(
+                  label: '대여',
+                  count: rental,
+                  fg: const Color(0xFF5B7FA6),
+                  bg: const Color(0x265B7FA6),
+                ),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: _CountChip(
+                  label: '우선',
+                  count: priority,
+                  fg: AppColors.red,
+                  bg: const Color(0x26E74C3C),
+                ),
+              ),
             ],
           ),
           if (message.isNotEmpty) ...[
@@ -825,26 +856,44 @@ class _Dot extends StatelessWidget {
 class _CountChip extends StatelessWidget {
   final String label;
   final int count;
-  const _CountChip({required this.label, required this.count});
+  final Color fg;
+  final Color bg;
+
+  const _CountChip({
+    required this.label,
+    required this.count,
+    required this.fg,
+    required this.bg,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
       decoration: BoxDecoration(
-        color: AppColors.surface3,
-        borderRadius: BorderRadius.circular(6),
+        color: bg,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: fg.withAlpha(80), width: 0.5),
       ),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Text('$count',
-              style: const TextStyle(
-                  color: AppColors.cream,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600)),
-          Text(label,
-              style: const TextStyle(
-                  color: AppColors.muted, fontSize: 11)),
+          Text(
+            label,
+            style: TextStyle(color: fg, fontSize: 11, fontWeight: FontWeight.w500),
+          ),
+          const SizedBox(height: 4),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              '$count',
+              style: TextStyle(
+                color: fg,
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
         ],
       ),
     );
