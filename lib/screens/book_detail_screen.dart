@@ -170,17 +170,17 @@ class _BookDetailBody extends StatelessWidget {
 
   List<Widget> _infoRows(Book b) {
     final pairs = <(String, String?)>[
-      ('출판사',   b.publisher),
       ('출판연도', b.year),
-      ('장르',    b.genre),
+      ('출판사',   b.publisher),
       ('책장 위치', b.location),
-      ('ISBN',   b.isbn),
-      ('총 페이지', b.pageCount?.toString()),
       ('청구기호', b.callNumber),
+      ('ISBN',   b.isbn),
       ('매체',   b.medium == 'paper' ? '종이책'
                : b.medium == 'ebook' ? '전자책'
                : b.medium == 'audio' ? '오디오북'
                : b.medium),
+      ('장르',    b.genre),
+      ('총 페이지', b.pageCount?.toString()),
     ];
     return pairs
         .where((p) => p.$2 != null && p.$2!.isNotEmpty)
