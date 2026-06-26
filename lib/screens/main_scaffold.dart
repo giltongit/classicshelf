@@ -28,7 +28,7 @@ class MainScaffold extends StatelessWidget {
           BottomNavigationBarItem(
             icon: Icon(Icons.book_outlined),
             activeIcon: Icon(Icons.book),
-            label: '서재',
+            label: '서가',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.bar_chart_outlined),

@@ -14,7 +14,7 @@ import '../screens/stats_screen.dart';
 final appRouter = GoRouter(
   initialLocation: '/',
   routes: [
-    // ── 하단 탭 3개 (서재 / 통계 / 설정) ────────────────────────────────────
+    // ── 하단 탭 3개 (서가 / 통계 / 설정) ────────────────────────────────────
     StatefulShellRoute.indexedStack(
       builder: (context, state, navigationShell) =>
           MainScaffold(navigationShell: navigationShell),

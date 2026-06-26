@@ -10,7 +10,7 @@ class CsvExportService {
   CsvExportService(this._repo);
 
   /// 전체 책 목록을 CSV 파일로 저장한다.
-  /// 반환값: (path, count, savedDir) — count가 0이면 빈 서재
+  /// 반환값: (path, count, savedDir) — count가 0이면 빈 서가
   Future<({String path, int count, String savedDir})> export() async {
     final books = await _repo.getBooks();
     if (books.isEmpty) return (path: '', count: 0, savedDir: '');

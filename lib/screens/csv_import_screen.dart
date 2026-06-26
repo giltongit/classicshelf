@@ -125,7 +125,7 @@ class _CsvImportScreenState extends ConsumerState<CsvImportScreen> {
             ),
             const SizedBox(height: 8),
             const Text(
-              'UTF-8 · EUC-KR(CP949) 인코딩 지원\n내서재 내보내기 파일 또는 동일 형식의 CSV',
+              'UTF-8 · EUC-KR(CP949) 인코딩 지원\n나의 도서관 내보내기 파일 또는 동일 형식의 CSV',
               textAlign: TextAlign.center,
               style: TextStyle(color: AppColors.muted, fontSize: 13, height: 1.6),
             ),
@@ -282,7 +282,7 @@ class _CsvImportScreenState extends ConsumerState<CsvImportScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 14),
               ),
               onPressed: () => context.go('/'),
-              child: const Text('서재로 돌아가기',
+              child: const Text('서가로 돌아가기',
                   style: TextStyle(fontWeight: FontWeight.w600)),
             ),
           ],

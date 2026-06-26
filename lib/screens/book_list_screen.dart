@@ -18,7 +18,7 @@ class BookListScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('내 서재'),
+        title: const Text('나의 도서관'),
         actions: [
           IconButton(
             icon: const Icon(Icons.qr_code_scanner),
