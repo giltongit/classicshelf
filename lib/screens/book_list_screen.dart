@@ -46,6 +46,11 @@ class BookListScreen extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('나의 도서관'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.qr_code_scanner),
+            tooltip: '바코드 스캔',
+            onPressed: () => context.push('/scan'),
+          ),
           Stack(
             alignment: Alignment.topRight,
             children: [
@@ -69,11 +74,6 @@ class BookListScreen extends ConsumerWidget {
                   ),
                 ),
             ],
-          ),
-          IconButton(
-            icon: const Icon(Icons.qr_code_scanner),
-            tooltip: '바코드 스캔',
-            onPressed: () => context.push('/scan'),
           ),
           IconButton(
             icon: const Icon(Icons.add),

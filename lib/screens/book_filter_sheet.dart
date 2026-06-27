@@ -102,7 +102,7 @@ class _BookFilterSheetState extends State<BookFilterSheet> {
                     items: const [
                       _ChipItem('우선읽기', 'priority'),
                       _ChipItem('읽음', 'read'),
-                      _ChipItem('미읽음', 'unread'),
+                      _ChipItem('아직 읽지 않음', 'unread'),
                     ],
                     selected: _draft.attributes,
                     onChanged: (v) =>
