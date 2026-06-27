@@ -51,6 +51,11 @@ class BookListScreen extends ConsumerWidget {
             tooltip: '바코드 스캔',
             onPressed: () => context.push('/scan'),
           ),
+          IconButton(
+            icon: const Icon(Icons.search_rounded),
+            tooltip: '도서 검색',
+            onPressed: () => context.push('/search'),
+          ),
           Stack(
             alignment: Alignment.topRight,
             children: [
@@ -82,80 +87,147 @@ class BookListScreen extends ConsumerWidget {
           ),
         ],
       ),
-      body: RefreshIndicator(
-        color: AppColors.gold,
-        backgroundColor: AppColors.surface2,
-        onRefresh: () async {
-          await ref.read(bookRepositoryProvider).syncFromRemote();
-          ref.invalidate(booksProvider);
-          try {
-            await ref.read(booksProvider.future);
-          } catch (_) {}
-        },
-        child: booksAsync.when(
-          loading: () => const Center(
-            child: CircularProgressIndicator(color: AppColors.gold),
-          ),
-          error: (e, _) => ListView(
-            children: [
-              const SizedBox(height: 200),
-              Center(
-                child: Text(
-                  '불러오기 실패: $e',
-                  style: const TextStyle(color: AppColors.red),
-                  textAlign: TextAlign.center,
+      body: Column(
+        children: [
+          _LocalSearchBar(),
+          Expanded(
+            child: RefreshIndicator(
+              color: AppColors.gold,
+              backgroundColor: AppColors.surface2,
+              onRefresh: () async {
+                await ref.read(bookRepositoryProvider).syncFromRemote();
+                ref.invalidate(booksProvider);
+                try {
+                  await ref.read(booksProvider.future);
+                } catch (_) {}
+              },
+              child: booksAsync.when(
+                loading: () => const Center(
+                  child: CircularProgressIndicator(color: AppColors.gold),
                 ),
-              ),
-            ],
-          ),
-          data: (books) {
-            if (books.isEmpty) {
-              return ListView(
-                children: [
-                  const SizedBox(height: 160),
-                  Center(
-                    child: Column(
-                      children: [
-                        Icon(
-                          filter.isEmpty
-                              ? Icons.menu_book_outlined
-                              : Icons.search_off_rounded,
-                          size: 56,
-                          color: AppColors.dim,
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          filter.isEmpty
-                              ? '책이 없습니다'
-                              : '필터 조건에 맞는 책이 없습니다',
-                          style: const TextStyle(
-                              color: AppColors.muted, fontSize: 16),
-                        ),
-                        const SizedBox(height: 8),
-                        if (filter.isEmpty)
-                          const Text(
-                            '위에서 당겨 동기화하거나 + 버튼으로 추가하세요',
-                            style: TextStyle(
-                                color: AppColors.dim, fontSize: 13),
-                          ),
-                      ],
+                error: (e, _) => ListView(
+                  children: [
+                    const SizedBox(height: 200),
+                    Center(
+                      child: Text(
+                        '불러오기 실패: $e',
+                        style: const TextStyle(color: AppColors.red),
+                        textAlign: TextAlign.center,
+                      ),
                     ),
-                  ),
-                ],
-              );
-            }
-            return ListView.separated(
-              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
-              itemCount: books.length,
-              separatorBuilder: (_, _) => const SizedBox(height: 6),
-              itemBuilder: (context, i) => _BookCard(book: books[i]),
-            );
-          },
-        ),
+                  ],
+                ),
+                data: (books) {
+                  if (books.isEmpty) {
+                    return ListView(
+                      children: [
+                        const SizedBox(height: 160),
+                        Center(
+                          child: Column(
+                            children: [
+                              Icon(
+                                filter.isEmpty
+                                    ? Icons.menu_book_outlined
+                                    : Icons.search_off_rounded,
+                                size: 56,
+                                color: AppColors.dim,
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                filter.isEmpty
+                                    ? '책이 없습니다'
+                                    : '필터 조건에 맞는 책이 없습니다',
+                                style: const TextStyle(
+                                    color: AppColors.muted, fontSize: 16),
+                              ),
+                              const SizedBox(height: 8),
+                              if (filter.isEmpty)
+                                const Text(
+                                  '위에서 당겨 동기화하거나 + 버튼으로 추가하세요',
+                                  style: TextStyle(
+                                      color: AppColors.dim, fontSize: 13),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    );
+                  }
+                  return ListView.separated(
+                    padding: const EdgeInsets.symmetric(
+                        vertical: 8, horizontal: 12),
+                    itemCount: books.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 6),
+                    itemBuilder: (context, i) => _BookCard(book: books[i]),
+                  );
+                },
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
 }
+
+// ── 서가 로컬 검색창 ──────────────────────────────────────────────────────────
+
+class _LocalSearchBar extends ConsumerStatefulWidget {
+  @override
+  ConsumerState<_LocalSearchBar> createState() => _LocalSearchBarState();
+}
+
+class _LocalSearchBarState extends ConsumerState<_LocalSearchBar> {
+  final _ctrl = TextEditingController();
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+      child: TextField(
+        controller: _ctrl,
+        style: const TextStyle(color: AppColors.cream),
+        decoration: InputDecoration(
+          hintText: '제목, 저자, 위치로 검색...',
+          hintStyle: const TextStyle(color: AppColors.muted),
+          prefixIcon:
+              const Icon(Icons.search_rounded, color: AppColors.muted),
+          suffixIcon: _ctrl.text.isNotEmpty
+              ? IconButton(
+                  icon: const Icon(Icons.clear, color: AppColors.muted),
+                  onPressed: () {
+                    _ctrl.clear();
+                    ref
+                        .read(bookFilterProvider.notifier)
+                        .setSearchQuery('');
+                  },
+                )
+              : null,
+          filled: true,
+          fillColor: AppColors.surface2,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: BorderSide.none,
+          ),
+          contentPadding:
+              const EdgeInsets.symmetric(vertical: 0, horizontal: 16),
+        ),
+        onChanged: (v) {
+          setState(() {});
+          ref.read(bookFilterProvider.notifier).setSearchQuery(v);
+        },
+      ),
+    );
+  }
+}
+
+// ── _BookCard ─────────────────────────────────────────────────────────────────
 
 class _BookCard extends ConsumerWidget {
   final Book book;
@@ -192,7 +264,8 @@ class _BookCard extends ConsumerWidget {
                     const SizedBox(height: 3),
                     Text(
                       book.author,
-                      style: const TextStyle(color: AppColors.muted, fontSize: 12),
+                      style: const TextStyle(
+                          color: AppColors.muted, fontSize: 12),
                     ),
                     const SizedBox(height: 8),
                     Row(
@@ -316,7 +389,7 @@ class _StatusBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (label, fg, bg) = switch (status) {
-      'owned'    => ('소장', AppColors.gold,  AppColors.goldSubtle),
+      'owned'    => ('소장', AppColors.gold, AppColors.goldSubtle),
       'wishlist' => ('희망', AppColors.muted, AppColors.mutedSubtle),
       'rental'   => ('대여', const Color(0xFF5B7FA6), const Color(0x265B7FA6)),
       _          => ('기타', AppColors.muted, AppColors.mutedSubtle),

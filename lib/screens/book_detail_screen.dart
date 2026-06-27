@@ -134,6 +134,27 @@ class _BookDetailBody extends StatelessWidget {
 
                 ..._infoRows(book),
 
+                if (book.status == 'wishlist' &&
+                    (book.isbn?.isNotEmpty ?? false)) ...[
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      icon: const Icon(Icons.local_library_outlined, size: 18),
+                      label: const Text('도서관에서 찾기'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppColors.gold,
+                        side: BorderSide(
+                            color: AppColors.gold.withValues(alpha: 0.5)),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                      onPressed: () => context.push(
+                        '/search?tab=library&isbn=${Uri.encodeComponent(book.isbn!)}',
+                      ),
+                    ),
+                  ),
+                ],
+
                 if ((book.review ?? '').isNotEmpty) ...[
                   const SizedBox(height: 16),
                   const Text(
