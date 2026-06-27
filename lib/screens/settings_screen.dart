@@ -229,16 +229,40 @@ class SettingsScreen extends ConsumerWidget {
                               ),
                             );
                             if (confirm != true) return;
+
                             final db = ref.read(databaseProvider);
-                            await db.update(db.books).write(
-                              const BooksCompanion(
-                                  supabaseId: Value(null)),
-                            );
+                            final allBooks = await db.select(db.books).get();
+
+                            if (context.mounted) {
+                              showDialog<void>(
+                                context: context,
+                                barrierDismissible: false,
+                                builder: (_) => const AlertDialog(
+                                  content: Row(
+                                    children: [
+                                      CircularProgressIndicator(),
+                                      SizedBox(width: 16),
+                                      Text('초기화 중...'),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            }
+
+                            for (final book in allBooks) {
+                              await (db.update(db.books)
+                                    ..where((t) => t.id.equals(book.id)))
+                                  .write(const BooksCompanion(
+                                      supabaseId: Value(null)));
+                            }
+
+                            if (context.mounted) Navigator.of(context).pop();
+
                             if (context.mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
+                                SnackBar(
                                     content: Text(
-                                        'supabaseId 초기화 완료. 앱을 재시작하세요.')),
+                                        '초기화 완료 (${allBooks.length}권). 앱을 재시작하세요.')),
                               );
                             }
                           },
