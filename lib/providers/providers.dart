@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -171,16 +174,32 @@ final filteredBooksProvider = Provider<AsyncValue<List<Book>>>((ref) {
 // ── Google 계정 연결 ────────────────────────────────────────────────────────────
 
 class AuthNotifier extends AsyncNotifier<bool> {
+  StreamSubscription<AuthState>? _sub;
+
   @override
-  Future<bool> build() async =>
-      ref.read(authServiceProvider).isGoogleLinked;
+  Future<bool> build() async {
+    _sub = Supabase.instance.client.auth.onAuthStateChange.listen((data) {
+      final linked = data.session?.user.identities
+              ?.any((i) => i.provider == 'google') ??
+          false;
+      debugPrint('[AUTH] 상태 변경: ${data.event} / linked=$linked');
+      state = AsyncValue.data(linked);
+    });
+
+    ref.onDispose(() => _sub?.cancel());
+
+    return ref.read(authServiceProvider).isGoogleLinked;
+  }
 
   Future<void> linkGoogle() async {
     state = const AsyncValue.loading();
     try {
       await ref.read(authServiceProvider).linkGoogle();
-      state = const AsyncValue.data(true);
+      // state는 onAuthStateChange에서 자동 갱신.
+      // linkIdentity는 브라우저를 열고 즉시 반환하므로
+      // 실제 완료는 deep link 수신 후 onAuthStateChange 이벤트로 처리됨.
     } catch (e, st) {
+      debugPrint('[AUTH] linkGoogle 실패: $e');
       state = AsyncValue.error(e, st);
     }
   }
