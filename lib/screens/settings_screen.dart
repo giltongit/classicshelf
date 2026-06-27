@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -142,6 +143,42 @@ class SettingsScreen extends ConsumerWidget {
             subtitle: 'CSV 파일에서 도서 목록을 불러옵니다',
             onTap: () => context.push('/csv-import'),
           ),
+          // TODO: 출시 전 제거 — 디버그용
+          if (kDebugMode)
+            ListTile(
+              leading: const Icon(Icons.bug_report, color: AppColors.muted),
+              title: const Text('DB 상태 확인 (디버그)',
+                  style: TextStyle(color: AppColors.cream)),
+              onTap: () async {
+                final db = ref.read(databaseProvider);
+                final books = await db.select(db.books).get();
+                final total = books.length;
+                final hasSupa = books
+                    .where((b) =>
+                        b.supabaseId != null && b.supabaseId!.isNotEmpty)
+                    .length;
+                final nullSupa = total - hasSupa;
+                if (context.mounted) {
+                  showDialog<void>(
+                    context: context,
+                    builder: (_) => AlertDialog(
+                      title: const Text('로컬 DB 상태'),
+                      content: Text(
+                        '전체: $total권\n'
+                        'supabaseId 있음: $hasSupa권\n'
+                        'supabaseId null: $nullSupa권',
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(context),
+                          child: const Text('확인'),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+              },
+            ),
         ],
       ),
     );
