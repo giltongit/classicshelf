@@ -1,4 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
     <!-- image_picker: 카메라 촬영 -->
     <uses-permission android:name="android.permission.CAMERA"/>
     <!-- image_picker: 갤러리 접근 (Android 13+) -->
@@ -9,7 +11,8 @@
     <application
         android:label="mylibrary"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:usesCleartextTraffic="true">
         <activity
             android:name=".MainActivity"
             android:exported="true"

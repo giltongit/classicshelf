@@ -15,6 +15,7 @@ import '../screens/stats_monthly_screen.dart';
 import '../screens/stats_screen.dart';
 import '../screens/stats_wishlist_screen.dart';
 import '../screens/stats_year_screen.dart';
+import '../screens/unified_search_screen.dart';
 
 final appRouter = GoRouter(
   initialLocation: '/home',
@@ -74,9 +75,28 @@ final appRouter = GoRouter(
       path: '/add',
       builder: (context, state) {
         final extra = state.extra;
+        final searchResult = extra is BookSearchResult
+            ? extra
+            : (extra is Map && extra['result'] is BookSearchResult)
+                ? extra['result'] as BookSearchResult
+                : null;
+        final initialStatus =
+            extra is Map ? extra['status'] as String? : null;
         return AddBookScreen(
           editBook: extra is Book ? extra : null,
-          searchResult: extra is BookSearchResult ? extra : null,
+          searchResult: searchResult,
+          initialStatus: initialStatus,
+        );
+      },
+    ),
+    GoRoute(
+      path: '/search',
+      builder: (context, state) {
+        final p = state.uri.queryParameters;
+        return UnifiedSearchScreen(
+          initialTab:   p['tab'] == 'library' ? 1 : 0,
+          initialIsbn:  p['isbn'],
+          initialQuery: p['query'],
         );
       },
     ),

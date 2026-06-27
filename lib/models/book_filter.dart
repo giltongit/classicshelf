@@ -5,6 +5,7 @@ class BookFilter {
   final String? initial;
   final Set<String> locations;
   final String sortBy;
+  final String searchQuery;
 
   const BookFilter({
     this.statuses = const {},
@@ -13,6 +14,7 @@ class BookFilter {
     this.initial,
     this.locations = const {},
     this.sortBy = 'createdAt',
+    this.searchQuery = '',
   });
 
   static const _absent = Object();
@@ -24,6 +26,7 @@ class BookFilter {
     Object? initial = _absent,
     Set<String>? locations,
     String? sortBy,
+    String? searchQuery,
   }) =>
       BookFilter(
         statuses: statuses ?? this.statuses,
@@ -32,6 +35,7 @@ class BookFilter {
         initial: identical(initial, _absent) ? this.initial : initial as String?,
         locations: locations ?? this.locations,
         sortBy: sortBy ?? this.sortBy,
+        searchQuery: searchQuery ?? this.searchQuery,
       );
 
   bool get isEmpty =>
@@ -40,9 +44,10 @@ class BookFilter {
       media.isEmpty &&
       initial == null &&
       locations.isEmpty &&
-      sortBy == 'createdAt';
+      sortBy == 'createdAt' &&
+      searchQuery.isEmpty;
 
-  // 뱃지 카운트: 정렬 기준은 카운트 제외
+  // 뱃지 카운트: 정렬 기준·검색어는 카운트 제외
   int get activeCount =>
       statuses.length +
       attributes.length +

@@ -104,7 +104,18 @@ String? bookGroupKey(String title) {
 }
 
 List<Book> applyBookFilterAndSort(List<Book> books, BookFilter filter) {
-  final result = books.where((b) {
+  var result = books;
+
+  if (filter.searchQuery.isNotEmpty) {
+    final q = filter.searchQuery.toLowerCase();
+    result = result.where((b) =>
+      b.title.toLowerCase().contains(q) ||
+      b.author.toLowerCase().contains(q) ||
+      (b.location?.toLowerCase().contains(q) ?? false)
+    ).toList();
+  }
+
+  final filtered = result.where((b) {
     if (filter.statuses.isNotEmpty && !filter.statuses.contains(b.status)) {
       return false;
     }
@@ -130,20 +141,20 @@ List<Book> applyBookFilterAndSort(List<Book> books, BookFilter filter) {
 
   switch (filter.sortBy) {
     case 'title':
-      result.sort((a, b) => a.title.compareTo(b.title));
+      filtered.sort((a, b) => a.title.compareTo(b.title));
     case 'author':
-      result.sort((a, b) => a.author.compareTo(b.author));
+      filtered.sort((a, b) => a.author.compareTo(b.author));
     case 'year':
-      result.sort((a, b) {
+      filtered.sort((a, b) {
         if (a.year == null) return 1;
         if (b.year == null) return -1;
         return b.year!.compareTo(a.year!);
       });
     case 'location':
-      result.sort(
+      filtered.sort(
           (a, b) => (a.location ?? '').compareTo(b.location ?? ''));
     default: // createdAt 내림차순
-      result.sort((a, b) {
+      filtered.sort((a, b) {
         final ca = a.createdAt, cb = b.createdAt;
         if (ca == null && cb == null) return 0;
         if (ca == null) return 1;
@@ -151,13 +162,15 @@ List<Book> applyBookFilterAndSort(List<Book> books, BookFilter filter) {
         return cb.compareTo(ca);
       });
   }
-  return result;
+  return filtered;
 }
 
 class BookFilterNotifier extends Notifier<BookFilter> {
   @override
   BookFilter build() => const BookFilter();
   void update(BookFilter f) => state = f;
+  void setSearchQuery(String q) =>
+      state = state.copyWith(searchQuery: q);
 }
 
 final bookFilterProvider =

@@ -19,7 +19,15 @@ class AddBookScreen extends ConsumerStatefulWidget {
   /// 바코드 스캔 검색 결과 — 신규 추가 시 폼 자동입력에 사용.
   final BookSearchResult? searchResult;
 
-  const AddBookScreen({super.key, this.editBook, this.searchResult});
+  /// 검색 화면에서 전달된 초기 상태값 (소장/희망/대여).
+  final String? initialStatus;
+
+  const AddBookScreen({
+    super.key,
+    this.editBook,
+    this.searchResult,
+    this.initialStatus,
+  });
 
   @override
   ConsumerState<AddBookScreen> createState() => _AddBookScreenState();
@@ -65,7 +73,7 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
     _location   = TextEditingController(text: b?.location  ?? '');
     _callNumber = TextEditingController(text: b?.callNumber ?? '');
     _review     = TextEditingController(text: b?.review    ?? '');
-    _status     = b?.status ?? 'owned';
+    _status     = widget.initialStatus ?? b?.status ?? 'owned';
     _isRead     = b?.isRead ?? false;
     _medium     = b?.medium ?? 'paper';
     _acquiredAt = b?.acquiredAt;
