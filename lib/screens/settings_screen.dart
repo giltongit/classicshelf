@@ -26,11 +26,35 @@ class SettingsScreen extends ConsumerWidget {
     final slotPaths =
         bgState?.slotPaths ?? const <String?>[null, null, null];
     final notifier = ref.read(homeBackgroundProvider.notifier);
+    final authAsync = ref.watch(authNotifierProvider);
+    final authService = ref.read(authServiceProvider);
 
     return Scaffold(
       appBar: AppBar(title: const Text('설정')),
       body: ListView(
         children: [
+          const _SectionHeader('계정'),
+          Padding(
+            padding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: authAsync.when(
+              loading: () => const Padding(
+                padding: EdgeInsets.symmetric(vertical: 12),
+                child: Center(
+                    child: CircularProgressIndicator(color: AppColors.gold)),
+              ),
+              error: (_, _) => const Text(
+                '연결에 실패했습니다. 다시 시도해 주세요.',
+                style: TextStyle(color: AppColors.red),
+              ),
+              data: (isLinked) => isLinked
+                  ? _AccountLinked(email: authService.linkedGoogleEmail)
+                  : _AccountUnlinked(
+                      onTap: () => ref
+                          .read(authNotifierProvider.notifier)
+                          .linkGoogle()),
+            ),
+          ),
           const _SectionHeader('홈 배경 이미지'),
           Padding(
             padding:
@@ -209,6 +233,76 @@ class _SettingsTile extends StatelessWidget {
       subtitle: Text(subtitle, style: const TextStyle(color: AppColors.muted, fontSize: 12)),
       trailing: const Icon(Icons.chevron_right, color: AppColors.dim),
       onTap: onTap,
+    );
+  }
+}
+
+// ── 계정 섹션 위젯 ──────────────────────────────────────────────────────────────
+
+class _AccountUnlinked extends StatelessWidget {
+  final VoidCallback onTap;
+  const _AccountUnlinked({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Google 계정',
+          style: TextStyle(color: AppColors.cream),
+        ),
+        const SizedBox(height: 4),
+        const Text(
+          '계정을 연결하면 기기를 바꿔도\n나의 도서관이 그대로 유지됩니다.',
+          style: TextStyle(color: AppColors.muted, fontSize: 13),
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            icon: const Icon(Icons.account_circle_outlined),
+            label: const Text('Google 계정 연결'),
+            onPressed: onTap,
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.gold,
+              side: const BorderSide(color: AppColors.gold),
+              padding: const EdgeInsets.symmetric(vertical: 12),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _AccountLinked extends StatelessWidget {
+  final String? email;
+  const _AccountLinked({required this.email});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        const Icon(Icons.check_circle_rounded,
+            color: AppColors.gold, size: 18),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                email ?? '',
+                style: const TextStyle(color: AppColors.cream),
+              ),
+              const Text(
+                '나의 도서관이 동기화되고 있습니다.',
+                style: TextStyle(color: AppColors.muted, fontSize: 12),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

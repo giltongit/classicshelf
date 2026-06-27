@@ -167,3 +167,24 @@ final filteredBooksProvider = Provider<AsyncValue<List<Book>>>((ref) {
   final filter = ref.watch(bookFilterProvider);
   return booksAsync.whenData((books) => applyBookFilterAndSort(books, filter));
 });
+
+// ── Google 계정 연결 ────────────────────────────────────────────────────────────
+
+class AuthNotifier extends AsyncNotifier<bool> {
+  @override
+  Future<bool> build() async =>
+      ref.read(authServiceProvider).isGoogleLinked;
+
+  Future<void> linkGoogle() async {
+    state = const AsyncValue.loading();
+    try {
+      await ref.read(authServiceProvider).linkGoogle();
+      state = const AsyncValue.data(true);
+    } catch (e, st) {
+      state = AsyncValue.error(e, st);
+    }
+  }
+}
+
+final authNotifierProvider =
+    AsyncNotifierProvider<AuthNotifier, bool>(AuthNotifier.new);

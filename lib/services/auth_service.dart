@@ -1,11 +1,17 @@
 import 'package:flutter/foundation.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 // TODO: 추후 mylibrary_core 패키지로 이동 예정
 class AuthService {
-  const AuthService(this._client);
+  AuthService(this._client);
 
   final SupabaseClient _client;
+
+  late final _googleSignIn = GoogleSignIn(
+    // Supabase 대시보드 → Authentication → Providers → Google → Web Client ID
+    serverClientId: const String.fromEnvironment('GOOGLE_WEB_CLIENT_ID'),
+  );
 
   /// 세션이 없을 때만 익명 로그인. 오프라인 실패 시에도 앱 부팅 허용.
   Future<void> ensureSignedIn() async {
@@ -23,4 +29,37 @@ class AuthService {
   }
 
   String? get currentUserId => _client.auth.currentUser?.id;
+  User? get currentUser => _client.auth.currentUser;
+
+  /// Google identity 연결 여부.
+  bool get isGoogleLinked =>
+      currentUser?.identities?.any((i) => i.provider == 'google') ?? false;
+
+  /// 연결된 Google 계정 이메일 (미연결이면 null).
+  String? get linkedGoogleEmail => currentUser?.identities
+      ?.where((i) => i.provider == 'google')
+      .map((i) => i.identityData?['email'] as String?)
+      .firstOrNull;
+
+  /// 익명 계정 → Google 계정 연결.
+  ///
+  /// supabase_flutter ^2.x 에서 native Google 연결은 signInWithIdToken 사용.
+  /// 익명 사용자 + 미가입 Google 계정일 때 user_id 보존 여부는
+  /// Supabase 서버 설정에 따라 다르므로 실기기 확인 필수.
+  Future<void> linkGoogle() async {
+    final googleUser = await _googleSignIn.signIn();
+    if (googleUser == null) return; // 사용자 취소
+
+    final googleAuth = await googleUser.authentication;
+    final idToken = googleAuth.idToken;
+    if (idToken == null) throw Exception('Google ID token 없음');
+
+    await _client.auth.signInWithIdToken(
+      provider: OAuthProvider.google,
+      idToken: idToken,
+      accessToken: googleAuth.accessToken,
+    );
+
+    debugPrint('[Auth] Google 연결 완료: ${_client.auth.currentUser?.id}');
+  }
 }
