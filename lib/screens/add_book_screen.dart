@@ -46,6 +46,8 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
   File? _localCoverFile;
   String? _coverUrl;
   bool _saving = false;
+  List<String> _locationSuggestions = [];
+  late final FocusNode _locationFocusNode;
 
   bool get _isEdit => widget.editBook != null;
 
@@ -68,6 +70,16 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
     _medium     = b?.medium ?? 'paper';
     _acquiredAt = b?.acquiredAt;
     _coverUrl   = b?.coverUrl ?? s?.thumbnailUrl;
+
+    _locationFocusNode = FocusNode();
+    _locationFocusNode.addListener(() {
+      if (!_locationFocusNode.hasFocus && mounted) {
+        // 150ms 지연: 제안 탭 이벤트가 먼저 처리되도록
+        Future.delayed(const Duration(milliseconds: 150), () {
+          if (mounted) setState(() => _locationSuggestions = []);
+        });
+      }
+    });
   }
 
   @override
@@ -81,6 +93,7 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
     _location.dispose();
     _callNumber.dispose();
     _review.dispose();
+    _locationFocusNode.dispose();
     super.dispose();
   }
 
@@ -274,6 +287,23 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
     );
   }
 
+  void _onLocationChanged(String value) {
+    final books = ref.read(booksProvider).value ?? [];
+    final all = books
+        .map((b) => b.location)
+        .whereType<String>()
+        .where((l) => l.isNotEmpty)
+        .toSet()
+        .toList();
+    final filtered = value.isEmpty
+        ? all
+        : all
+            .where((l) => l.toLowerCase().startsWith(value.toLowerCase()))
+            .toList();
+    filtered.sort();
+    setState(() => _locationSuggestions = filtered);
+  }
+
   /// 표지 업로드 → coverUrl 업데이트 → 갱신된 Book 반환.
   ///
   /// 흐름: pick(호출 전) → resizeAndCache → CoverUploadNotifier.enqueue
@@ -347,7 +377,17 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
                 _Field(controller: _publisher, label: '출판사'),
                 _Field(controller: _year,      label: '출판연도', keyboardType: TextInputType.number),
                 _Field(controller: _genre,     label: '장르'),
-                _Field(controller: _location,   label: '책장 위치'),
+                _LocationField(
+                  controller: _location,
+                  focusNode: _locationFocusNode,
+                  suggestions: _locationSuggestions,
+                  onChanged: _onLocationChanged,
+                  onSuggestionTap: (s) {
+                    _location.text = s;
+                    _locationFocusNode.unfocus();
+                    setState(() => _locationSuggestions = []);
+                  },
+                ),
                 _Field(controller: _callNumber, label: '청구기호',
                     hint: '예) 813.6-한강-채'),
                 _DatePickerField(
@@ -460,6 +500,61 @@ class _CoverPicker extends StatelessWidget {
               ),
             ],
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LocationField extends StatelessWidget {
+  final TextEditingController controller;
+  final FocusNode focusNode;
+  final List<String> suggestions;
+  final ValueChanged<String> onChanged;
+  final ValueChanged<String> onSuggestionTap;
+
+  const _LocationField({
+    required this.controller,
+    required this.focusNode,
+    required this.suggestions,
+    required this.onChanged,
+    required this.onSuggestionTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          TextFormField(
+            controller: controller,
+            focusNode: focusNode,
+            onChanged: onChanged,
+            style: const TextStyle(color: AppColors.cream),
+            decoration: const InputDecoration(labelText: '책장 위치'),
+          ),
+          if (suggestions.isNotEmpty)
+            Material(
+              elevation: 4,
+              color: AppColors.surface2,
+              borderRadius: BorderRadius.circular(8),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: suggestions.take(5).map((s) {
+                  return ListTile(
+                    dense: true,
+                    title: Text(
+                      s,
+                      style: const TextStyle(
+                          color: AppColors.cream, fontSize: 13),
+                    ),
+                    onTap: () => onSuggestionTap(s),
+                  );
+                }).toList(),
+              ),
+            ),
         ],
       ),
     );
