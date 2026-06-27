@@ -153,24 +153,26 @@ class _BookCard extends ConsumerWidget {
                           ),
                         ],
                         const Spacer(),
-                        GestureDetector(
-                          onTap: () async {
-                            await ref
-                                .read(bookRepositoryProvider)
-                                .togglePriorityRead(book.localId!);
-                            ref.invalidate(booksProvider);
-                          },
-                          child: SizedBox(
-                            width: 32,
-                            height: 32,
-                            child: Icon(
-                              book.priorityRead
-                                  ? Icons.star_rounded
-                                  : Icons.star_outline_rounded,
-                              size: 20,
-                              color: book.priorityRead
-                                  ? AppColors.gold
-                                  : AppColors.muted,
+                        SizedBox(
+                          width: 40,
+                          height: 26,
+                          child: Transform.scale(
+                            scale: 0.65,
+                            alignment: Alignment.centerRight,
+                            child: Switch(
+                              value: book.priorityRead,
+                              onChanged: (_) async {
+                                await ref
+                                    .read(bookRepositoryProvider)
+                                    .togglePriorityRead(book.localId!);
+                                ref.invalidate(booksProvider);
+                              },
+                              activeThumbColor: AppColors.gold,
+                              activeTrackColor:
+                                  AppColors.gold.withValues(alpha: 0.3),
+                              inactiveThumbColor: AppColors.muted,
+                              inactiveTrackColor:
+                                  AppColors.muted.withValues(alpha: 0.2),
                             ),
                           ),
                         ),
