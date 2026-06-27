@@ -2,8 +2,8 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-
 import 'package:go_router/go_router.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../features/home/home_background_notifier.dart';
 import '../providers/providers.dart';
@@ -37,22 +37,63 @@ class SettingsScreen extends ConsumerWidget {
           Padding(
             padding:
                 const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: authAsync.when(
-              loading: () => const Padding(
-                padding: EdgeInsets.symmetric(vertical: 12),
-                child: Center(
-                    child: CircularProgressIndicator(color: AppColors.gold)),
-              ),
-              error: (_, _) => const Text(
-                '연결에 실패했습니다. 다시 시도해 주세요.',
-                style: TextStyle(color: AppColors.red),
-              ),
-              data: (isLinked) => isLinked
-                  ? _AccountLinked(email: authService.linkedGoogleEmail)
-                  : _AccountUnlinked(
-                      onTap: () => ref
-                          .read(authNotifierProvider.notifier)
-                          .linkGoogle()),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                authAsync.when(
+                  loading: () => const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 12),
+                    child: Center(
+                        child: CircularProgressIndicator(color: AppColors.gold)),
+                  ),
+                  error: (_, _) => const Text(
+                    '연결에 실패했습니다. 다시 시도해 주세요.',
+                    style: TextStyle(color: AppColors.red),
+                  ),
+                  data: (isLinked) => isLinked
+                      ? _AccountLinked(email: authService.linkedGoogleEmail)
+                      : _AccountUnlinked(
+                          onTap: () => ref
+                              .read(authNotifierProvider.notifier)
+                              .linkGoogle()),
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.logout_rounded, size: 18),
+                    label: const Text('로그아웃'),
+                    onPressed: () async {
+                      await Supabase.instance.client.auth.signOut();
+                      if (context.mounted) {
+                        showDialog<void>(
+                          context: context,
+                          barrierDismissible: false,
+                          builder: (_) => AlertDialog(
+                            backgroundColor: AppColors.surface,
+                            title: const Text('로그아웃 완료',
+                                style: TextStyle(color: AppColors.cream)),
+                            content: const Text('앱을 다시 시작해 주세요.',
+                                style: TextStyle(color: AppColors.muted)),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(context),
+                                child: const Text('확인',
+                                    style: TextStyle(color: AppColors.gold)),
+                              ),
+                            ],
+                          ),
+                        );
+                      }
+                    },
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.red,
+                      side: BorderSide(
+                          color: AppColors.red.withValues(alpha: 0.5)),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
           const _SectionHeader('홈 배경 이미지'),
