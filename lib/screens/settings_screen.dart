@@ -1,13 +1,9 @@
 import 'dart:io';
 
-import 'package:drift/drift.dart' show Value;
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-
-import '../database/app_database.dart' show BooksCompanion;
 
 import '../features/home/home_background_notifier.dart';
 import '../providers/providers.dart';
@@ -146,142 +142,6 @@ class SettingsScreen extends ConsumerWidget {
             subtitle: 'CSV 파일에서 도서 목록을 불러옵니다',
             onTap: () => context.push('/csv-import'),
           ),
-          // TODO: 출시 전 제거 — 디버그용
-          if (kDebugMode)
-            ListTile(
-              leading: const Icon(Icons.bug_report, color: AppColors.muted),
-              title: const Text('DB 상태 확인 (디버그)',
-                  style: TextStyle(color: AppColors.cream)),
-              onTap: () async {
-                final db = ref.read(databaseProvider);
-                final books = await db.select(db.books).get();
-                final total = books.length;
-                final hasSupa = books
-                    .where((b) =>
-                        b.supabaseId != null && b.supabaseId!.isNotEmpty)
-                    .length;
-                final nullSupa = total - hasSupa;
-                final queueRows = await db.select(db.syncQueue).get();
-                final queueTotal = queueRows.length;
-                final insertCount = queueRows
-                    .where((r) => r.operation == 'insert').length;
-                final updateCount = queueRows
-                    .where((r) => r.operation == 'update').length;
-                final deleteCount = queueRows
-                    .where((r) => r.operation == 'delete').length;
-                final sample = books
-                    .where((b) => b.supabaseId != null)
-                    .take(5)
-                    .map((b) {
-                      final t = b.title;
-                      final title = t.length > 10 ? t.substring(0, 10) : t;
-                      return '$title... ${b.supabaseId!.substring(0, 8)}';
-                    })
-                    .join('\n');
-                if (context.mounted) {
-                  showDialog<void>(
-                    context: context,
-                    builder: (ctx) => AlertDialog(
-                      title: const Text('로컬 DB 상태'),
-                      content: Text(
-                        '=== 로컬 DB ===\n'
-                        '전체: $total권\n'
-                        'supabaseId 있음: $hasSupa권\n'
-                        'supabaseId null: $nullSupa권\n'
-                        '\n=== sync_queue ===\n'
-                        '전체: $queueTotal건\n'
-                        'insert: $insertCount건\n'
-                        'update: $updateCount건\n'
-                        'delete: $deleteCount건\n'
-                        '\n=== supabaseId 샘플 ===\n$sample',
-                      ),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.pop(ctx),
-                          child: const Text('확인'),
-                        ),
-                        TextButton(
-                          onPressed: () async {
-                            Navigator.pop(ctx);
-                            final confirm = await showDialog<bool>(
-                              context: context,
-                              builder: (_) => AlertDialog(
-                                title: const Text('supabaseId 초기화'),
-                                content: const Text(
-                                  '로컬 DB의 supabaseId를 전부 null로 초기화합니다.\n'
-                                  '다음 앱 시작 시 Supabase에 재동기화됩니다.\n'
-                                  '계속하시겠습니까?',
-                                ),
-                                actions: [
-                                  TextButton(
-                                    onPressed: () =>
-                                        Navigator.pop(context, false),
-                                    child: const Text('취소'),
-                                  ),
-                                  TextButton(
-                                    onPressed: () =>
-                                        Navigator.pop(context, true),
-                                    child: const Text('초기화',
-                                        style:
-                                            TextStyle(color: AppColors.red)),
-                                  ),
-                                ],
-                              ),
-                            );
-                            if (confirm != true) return;
-
-                            // 로딩 다이얼로그 먼저 표시
-                            if (!context.mounted) return;
-                            showDialog<void>(
-                              context: context,
-                              barrierDismissible: false,
-                              builder: (_) => const AlertDialog(
-                                content: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    CircularProgressIndicator(),
-                                    SizedBox(width: 16),
-                                    Text('초기화 중...'),
-                                  ],
-                                ),
-                              ),
-                            );
-
-                            // 다음 프레임에서 실제 작업 실행 (UI가 먼저 그려지도록)
-                            await Future.microtask(() async {
-                              final db = ref.read(databaseProvider);
-                              final books =
-                                  await db.select(db.books).get();
-
-                              for (final book in books) {
-                                await (db.update(db.books)
-                                      ..where((t) => t.id.equals(book.id)))
-                                    .write(const BooksCompanion(
-                                        supabaseId: Value(null)));
-                              }
-
-                              if (context.mounted) {
-                                Navigator.of(context).pop();
-                              }
-
-                              if (context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                      content: Text(
-                                          '초기화 완료 (${books.length}권). 앱을 재시작하세요.')),
-                                );
-                              }
-                            });
-                          },
-                          child: const Text('supabaseId 초기화',
-                              style: TextStyle(color: AppColors.red)),
-                        ),
-                      ],
-                    ),
-                  );
-                }
-              },
-            ),
         ],
       ),
     );
