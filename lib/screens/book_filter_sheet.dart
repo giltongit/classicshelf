@@ -314,7 +314,7 @@ class _InitialSectionState extends State<_InitialSection> {
       children: [
         Expanded(child: _buildDropdown(0, '한글', _korean)),
         const SizedBox(width: 8),
-        Expanded(child: _buildDropdown(1, '영어', _english)),
+        Expanded(child: _buildDropdown(1, '알파벳', _english)),
         const SizedBox(width: 8),
         Expanded(child: _buildDropdown(2, '숫자', _digits)),
       ],
