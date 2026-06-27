@@ -1,10 +1,13 @@
 import 'dart:io';
 
+import 'package:drift/drift.dart' show Value;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
+import '../database/app_database.dart' show BooksCompanion;
 
 import '../features/home/home_background_notifier.dart';
 import '../providers/providers.dart';
@@ -158,20 +161,89 @@ class SettingsScreen extends ConsumerWidget {
                         b.supabaseId != null && b.supabaseId!.isNotEmpty)
                     .length;
                 final nullSupa = total - hasSupa;
+                final queueRows = await db.select(db.syncQueue).get();
+                final queueTotal = queueRows.length;
+                final insertCount = queueRows
+                    .where((r) => r.operation == 'insert').length;
+                final updateCount = queueRows
+                    .where((r) => r.operation == 'update').length;
+                final deleteCount = queueRows
+                    .where((r) => r.operation == 'delete').length;
+                final sample = books
+                    .where((b) => b.supabaseId != null)
+                    .take(5)
+                    .map((b) {
+                      final t = b.title;
+                      final title = t.length > 10 ? t.substring(0, 10) : t;
+                      return '$title... ${b.supabaseId!.substring(0, 8)}';
+                    })
+                    .join('\n');
                 if (context.mounted) {
                   showDialog<void>(
                     context: context,
-                    builder: (_) => AlertDialog(
+                    builder: (ctx) => AlertDialog(
                       title: const Text('로컬 DB 상태'),
                       content: Text(
+                        '=== 로컬 DB ===\n'
                         '전체: $total권\n'
                         'supabaseId 있음: $hasSupa권\n'
-                        'supabaseId null: $nullSupa권',
+                        'supabaseId null: $nullSupa권\n'
+                        '\n=== sync_queue ===\n'
+                        '전체: $queueTotal건\n'
+                        'insert: $insertCount건\n'
+                        'update: $updateCount건\n'
+                        'delete: $deleteCount건\n'
+                        '\n=== supabaseId 샘플 ===\n$sample',
                       ),
                       actions: [
                         TextButton(
-                          onPressed: () => Navigator.pop(context),
+                          onPressed: () => Navigator.pop(ctx),
                           child: const Text('확인'),
+                        ),
+                        TextButton(
+                          onPressed: () async {
+                            Navigator.pop(ctx);
+                            final confirm = await showDialog<bool>(
+                              context: context,
+                              builder: (_) => AlertDialog(
+                                title: const Text('supabaseId 초기화'),
+                                content: const Text(
+                                  '로컬 DB의 supabaseId를 전부 null로 초기화합니다.\n'
+                                  '다음 앱 시작 시 Supabase에 재동기화됩니다.\n'
+                                  '계속하시겠습니까?',
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () =>
+                                        Navigator.pop(context, false),
+                                    child: const Text('취소'),
+                                  ),
+                                  TextButton(
+                                    onPressed: () =>
+                                        Navigator.pop(context, true),
+                                    child: const Text('초기화',
+                                        style:
+                                            TextStyle(color: AppColors.red)),
+                                  ),
+                                ],
+                              ),
+                            );
+                            if (confirm != true) return;
+                            final db = ref.read(databaseProvider);
+                            await db.update(db.books).write(
+                              const BooksCompanion(
+                                  supabaseId: Value(null)),
+                            );
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                    content: Text(
+                                        'supabaseId 초기화 완료. 앱을 재시작하세요.')),
+                              );
+                            }
+                          },
+                          child: const Text('supabaseId 초기화',
+                              style: TextStyle(color: AppColors.red)),
                         ),
                       ],
                     ),
