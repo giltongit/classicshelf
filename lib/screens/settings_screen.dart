@@ -230,41 +230,48 @@ class SettingsScreen extends ConsumerWidget {
                             );
                             if (confirm != true) return;
 
-                            final db = ref.read(databaseProvider);
-                            final allBooks = await db.select(db.books).get();
-
-                            if (context.mounted) {
-                              showDialog<void>(
-                                context: context,
-                                barrierDismissible: false,
-                                builder: (_) => const AlertDialog(
-                                  content: Row(
-                                    children: [
-                                      CircularProgressIndicator(),
-                                      SizedBox(width: 16),
-                                      Text('초기화 중...'),
-                                    ],
-                                  ),
+                            // 로딩 다이얼로그 먼저 표시
+                            if (!context.mounted) return;
+                            showDialog<void>(
+                              context: context,
+                              barrierDismissible: false,
+                              builder: (_) => const AlertDialog(
+                                content: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    CircularProgressIndicator(),
+                                    SizedBox(width: 16),
+                                    Text('초기화 중...'),
+                                  ],
                                 ),
-                              );
-                            }
+                              ),
+                            );
 
-                            for (final book in allBooks) {
-                              await (db.update(db.books)
-                                    ..where((t) => t.id.equals(book.id)))
-                                  .write(const BooksCompanion(
-                                      supabaseId: Value(null)));
-                            }
+                            // 다음 프레임에서 실제 작업 실행 (UI가 먼저 그려지도록)
+                            await Future.microtask(() async {
+                              final db = ref.read(databaseProvider);
+                              final books =
+                                  await db.select(db.books).get();
 
-                            if (context.mounted) Navigator.of(context).pop();
+                              for (final book in books) {
+                                await (db.update(db.books)
+                                      ..where((t) => t.id.equals(book.id)))
+                                    .write(const BooksCompanion(
+                                        supabaseId: Value(null)));
+                              }
 
-                            if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                    content: Text(
-                                        '초기화 완료 (${allBooks.length}권). 앱을 재시작하세요.')),
-                              );
-                            }
+                              if (context.mounted) {
+                                Navigator.of(context).pop();
+                              }
+
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                      content: Text(
+                                          '초기화 완료 (${books.length}권). 앱을 재시작하세요.')),
+                                );
+                              }
+                            });
                           },
                           child: const Text('supabaseId 초기화',
                               style: TextStyle(color: AppColors.red)),
