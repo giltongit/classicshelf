@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../database/app_database.dart';
 import '../models/book.dart';
+import '../models/book_filter.dart';
 import '../repositories/book_repository.dart';
 import '../repositories/book_repository_impl.dart';
 import '../repositories/profile_repository.dart';
@@ -77,3 +78,90 @@ final libraryNameProvider =
     AsyncNotifierProvider<LibraryNameNotifier, String?>(
   LibraryNameNotifier.new,
 );
+
+// ── 책 필터/정렬 ───────────────────────────────────────────────────────────────
+
+const _kInitials = [
+  'ㄱ', 'ㄲ', 'ㄴ', 'ㄷ', 'ㄸ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅃ',
+  'ㅅ', 'ㅆ', 'ㅇ', 'ㅈ', 'ㅉ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ',
+];
+
+String? bookGroupKey(String title) {
+  if (title.isEmpty) return null;
+  final code = title.codeUnitAt(0);
+  if (code >= 0xAC00 && code <= 0xD7A3) {
+    return _kInitials[(code - 0xAC00) ~/ 588];
+  }
+  final ch = title[0].toUpperCase();
+  if (ch.codeUnitAt(0) >= 65 && ch.codeUnitAt(0) <= 90) return ch;
+  if (ch.codeUnitAt(0) >= 48 && ch.codeUnitAt(0) <= 57) return '#';
+  return null;
+}
+
+List<Book> applyBookFilterAndSort(List<Book> books, BookFilter filter) {
+  final result = books.where((b) {
+    if (filter.statuses.isNotEmpty && !filter.statuses.contains(b.status)) {
+      return false;
+    }
+    if (filter.attributes.isNotEmpty) {
+      final match =
+          (filter.attributes.contains('priority') && b.priorityRead) ||
+          (filter.attributes.contains('read') && b.isRead) ||
+          (filter.attributes.contains('unread') && !b.isRead);
+      if (!match) return false;
+    }
+    if (filter.media.isNotEmpty && !filter.media.contains(b.medium)) {
+      return false;
+    }
+    if (filter.initial != null && bookGroupKey(b.title) != filter.initial) {
+      return false;
+    }
+    if (filter.locations.isNotEmpty &&
+        !filter.locations.contains(b.location)) {
+      return false;
+    }
+    return true;
+  }).toList();
+
+  switch (filter.sortBy) {
+    case 'title':
+      result.sort((a, b) => a.title.compareTo(b.title));
+    case 'author':
+      result.sort((a, b) => a.author.compareTo(b.author));
+    case 'year':
+      result.sort((a, b) {
+        if (a.year == null) return 1;
+        if (b.year == null) return -1;
+        return b.year!.compareTo(a.year!);
+      });
+    case 'location':
+      result.sort(
+          (a, b) => (a.location ?? '').compareTo(b.location ?? ''));
+    default: // createdAt 내림차순
+      result.sort((a, b) {
+        final ca = a.createdAt, cb = b.createdAt;
+        if (ca == null && cb == null) return 0;
+        if (ca == null) return 1;
+        if (cb == null) return -1;
+        return cb.compareTo(ca);
+      });
+  }
+  return result;
+}
+
+class BookFilterNotifier extends Notifier<BookFilter> {
+  @override
+  BookFilter build() => const BookFilter();
+  void update(BookFilter f) => state = f;
+}
+
+final bookFilterProvider =
+    NotifierProvider<BookFilterNotifier, BookFilter>(BookFilterNotifier.new);
+
+/// booksProvider(전체) + bookFilterProvider(조건) → 필터·정렬 적용 결과.
+/// booksAsync 상태(loading/error)는 그대로 전달되므로 .when() 패턴 유지 가능.
+final filteredBooksProvider = Provider<AsyncValue<List<Book>>>((ref) {
+  final booksAsync = ref.watch(booksProvider);
+  final filter = ref.watch(bookFilterProvider);
+  return booksAsync.whenData((books) => applyBookFilterAndSort(books, filter));
+});

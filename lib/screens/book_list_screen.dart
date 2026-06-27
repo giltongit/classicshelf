@@ -8,18 +8,68 @@ import 'package:go_router/go_router.dart';
 import '../models/book.dart';
 import '../providers/providers.dart';
 import '../theme/app_theme.dart';
+import 'book_filter_sheet.dart';
 
 class BookListScreen extends ConsumerWidget {
   const BookListScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final booksAsync = ref.watch(booksProvider);
+    final booksAsync = ref.watch(filteredBooksProvider);
+    final filter = ref.watch(bookFilterProvider);
+
+    void openFilterSheet() {
+      final allLocations = (ref.read(booksProvider).value ?? [])
+          .map((b) => b.location)
+          .whereType<String>()
+          .where((l) => l.isNotEmpty)
+          .toSet()
+          .toList()
+        ..sort();
+
+      showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: AppColors.surface,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+        ),
+        builder: (_) => BookFilterSheet(
+          current: ref.read(bookFilterProvider),
+          allLocations: allLocations,
+          onApply: (f) => ref.read(bookFilterProvider.notifier).update(f),
+        ),
+      );
+    }
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('나의 도서관'),
         actions: [
+          Stack(
+            alignment: Alignment.topRight,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.tune_rounded),
+                tooltip: '필터',
+                onPressed: openFilterSheet,
+              ),
+              if (filter.activeCount > 0)
+                Positioned(
+                  right: 6,
+                  top: 6,
+                  child: CircleAvatar(
+                    radius: 8,
+                    backgroundColor: AppColors.gold,
+                    child: Text(
+                      '${filter.activeCount}',
+                      style: const TextStyle(
+                          fontSize: 10, color: AppColors.bg),
+                    ),
+                  ),
+                ),
+            ],
+          ),
           IconButton(
             icon: const Icon(Icons.qr_code_scanner),
             tooltip: '바코드 스캔',
@@ -61,22 +111,33 @@ class BookListScreen extends ConsumerWidget {
           data: (books) {
             if (books.isEmpty) {
               return ListView(
-                children: const [
-                  SizedBox(height: 160),
+                children: [
+                  const SizedBox(height: 160),
                   Center(
                     child: Column(
                       children: [
-                        Icon(Icons.menu_book_outlined, size: 56, color: AppColors.dim),
-                        SizedBox(height: 16),
-                        Text(
-                          '책이 없습니다',
-                          style: TextStyle(color: AppColors.muted, fontSize: 16),
+                        Icon(
+                          filter.isEmpty
+                              ? Icons.menu_book_outlined
+                              : Icons.search_off_rounded,
+                          size: 56,
+                          color: AppColors.dim,
                         ),
-                        SizedBox(height: 8),
+                        const SizedBox(height: 16),
                         Text(
-                          '위에서 당겨 동기화하거나 + 버튼으로 추가하세요',
-                          style: TextStyle(color: AppColors.dim, fontSize: 13),
+                          filter.isEmpty
+                              ? '책이 없습니다'
+                              : '필터 조건에 맞는 책이 없습니다',
+                          style: const TextStyle(
+                              color: AppColors.muted, fontSize: 16),
                         ),
+                        const SizedBox(height: 8),
+                        if (filter.isEmpty)
+                          const Text(
+                            '위에서 당겨 동기화하거나 + 버튼으로 추가하세요',
+                            style: TextStyle(
+                                color: AppColors.dim, fontSize: 13),
+                          ),
                       ],
                     ),
                   ),
