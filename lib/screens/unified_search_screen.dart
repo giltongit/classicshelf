@@ -382,6 +382,33 @@ class _BookDetailSheetState extends ConsumerState<_BookDetailSheet> {
   BookSearchResult get result => widget.result;
 
   Future<void> _saveBook(String status) async {
+    // 중복 체크 — 저장 시작 전 현재 서가와 대조
+    final books = ref.read(booksProvider).asData?.value ?? [];
+    final isDuplicate = books.any((b) =>
+        (result.isbn13 != null &&
+            result.isbn13!.isNotEmpty &&
+            b.isbn == result.isbn13) ||
+        (result.isbn10 != null &&
+            result.isbn10!.isNotEmpty &&
+            b.isbn == result.isbn10) ||
+        // ISBN 없는 경우 title+author 대조
+        (result.isbn13 == null &&
+            result.isbn10 == null &&
+            b.title == result.title &&
+            b.author == result.authors.join(', ')));
+
+    if (isDuplicate) {
+      if (mounted) {
+        setState(() => _savedStatus = books
+            .firstWhere((b) =>
+                (result.isbn13 != null && b.isbn == result.isbn13) ||
+                (result.isbn10 != null && b.isbn == result.isbn10) ||
+                (b.title == result.title))
+            .status);
+      }
+      return;
+    }
+
     setState(() => _saving = true);
     try {
       final repo = ref.read(bookRepositoryProvider);
