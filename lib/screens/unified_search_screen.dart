@@ -2,8 +2,8 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:go_router/go_router.dart';
 
+import '../models/book.dart';
 import '../models/book_search_result.dart';
 import '../models/library_search_result.dart';
 import '../providers/providers.dart';
@@ -341,13 +341,17 @@ class _BookResultCard extends StatelessWidget {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: AppColors.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (_) => _BookDetailSheet(
-        result: result,
-        onSwitchToLibrary: onSwitchToLibrary,
+      backgroundColor: Colors.transparent,
+      builder: (_) => DraggableScrollableSheet(
+        initialChildSize: 0.6,
+        minChildSize: 0.4,
+        maxChildSize: 0.92,
+        expand: false,
+        builder: (_, scrollController) => _BookDetailSheet(
+          result: result,
+          onSwitchToLibrary: onSwitchToLibrary,
+          scrollController: scrollController,
+        ),
       ),
     );
   }
@@ -355,158 +359,293 @@ class _BookResultCard extends StatelessWidget {
 
 // ── _BookDetailSheet ────────────────────────────────────────────────────────────
 
-class _BookDetailSheet extends ConsumerWidget {
+class _BookDetailSheet extends ConsumerStatefulWidget {
   final BookSearchResult result;
   final void Function({required String isbn}) onSwitchToLibrary;
+  final ScrollController scrollController;
 
   const _BookDetailSheet({
     required this.result,
     required this.onSwitchToLibrary,
+    required this.scrollController,
   });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final books = ref.watch(booksProvider).asData?.value ?? [];
+  ConsumerState<_BookDetailSheet> createState() => _BookDetailSheetState();
+}
+
+class _BookDetailSheetState extends ConsumerState<_BookDetailSheet> {
+  bool _descExpanded = false;
+  bool _saving = false;
+  String? _savedStatus;
+
+  BookSearchResult get result => widget.result;
+
+  Future<void> _saveBook(String status) async {
+    setState(() => _saving = true);
+    try {
+      final repo = ref.read(bookRepositoryProvider);
+      final userId =
+          ref.read(supabaseClientProvider).auth.currentUser?.id ?? '';
+      final r = result;
+
+      await repo.addBook(Book(
+        userId:      userId,
+        title:       r.title,
+        author:      r.authors.join(', '),
+        isbn:        r.isbn13 ?? r.isbn10,
+        coverUrl:    r.thumbnailUrl,
+        description: r.description,
+        status:      status,
+        publisher:   r.publisher,
+        year:        r.year,
+        genre:       r.genre,
+        medium:      'paper',
+      ));
+
+      ref.invalidate(booksProvider);
+      if (mounted) setState(() { _saving = false; _savedStatus = status; });
+    } catch (e) {
+      if (mounted) {
+        setState(() => _saving = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('저장 실패: $e')),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final isbn = result.isbn13 ?? result.isbn10 ?? '';
 
+    return Container(
+      decoration: const BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      child: SingleChildScrollView(
+        controller: widget.scrollController,
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _handle(),
+                _bookInfo(isbn),
+                const SizedBox(height: 12),
+                if ((result.description?.isNotEmpty ?? false))
+                  _descriptionSection(),
+                const Divider(color: AppColors.dim),
+                const SizedBox(height: 12),
+                _actionSection(isbn),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _handle() {
+    return Center(
+      child: Container(
+        width: 40,
+        height: 4,
+        margin: const EdgeInsets.only(bottom: 16),
+        decoration: BoxDecoration(
+          color: AppColors.dim,
+          borderRadius: BorderRadius.circular(2),
+        ),
+      ),
+    );
+  }
+
+  Widget _bookInfo(String isbn) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _CoverThumbnail(url: result.thumbnailUrl, width: 80, height: 112),
+        const SizedBox(width: 16),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                result.title,
+                style: const TextStyle(
+                    color: AppColors.cream,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold),
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 4),
+              if (result.authors.isNotEmpty)
+                Text(
+                  result.authors.join(', '),
+                  style:
+                      const TextStyle(color: AppColors.muted, fontSize: 13),
+                ),
+              if ((result.publisher?.isNotEmpty ?? false) ||
+                  (result.publishedDate?.isNotEmpty ?? false))
+                Text(
+                  [result.publisher ?? '', result.publishedDate ?? '']
+                      .where((s) => s.isNotEmpty)
+                      .join(' · '),
+                  style:
+                      const TextStyle(color: AppColors.muted, fontSize: 12),
+                ),
+              if (isbn.isNotEmpty)
+                Text(
+                  'ISBN $isbn',
+                  style: const TextStyle(color: AppColors.dim, fontSize: 11),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _descriptionSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 4),
+        Text(
+          result.description!,
+          style: TextStyle(
+            color: AppColors.cream.withValues(alpha: 0.8),
+            fontSize: 13,
+            height: 1.6,
+          ),
+          maxLines: _descExpanded ? null : 4,
+          overflow:
+              _descExpanded ? TextOverflow.visible : TextOverflow.ellipsis,
+        ),
+        TextButton(
+          onPressed: () =>
+              setState(() => _descExpanded = !_descExpanded),
+          style: TextButton.styleFrom(
+            padding: EdgeInsets.zero,
+            minimumSize: Size.zero,
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            foregroundColor: AppColors.gold,
+          ),
+          child: Text(_descExpanded ? '접기' : '더 보기'),
+        ),
+        const SizedBox(height: 4),
+      ],
+    );
+  }
+
+  Widget _actionSection(String isbn) {
+    final books = ref.watch(booksProvider).asData?.value ?? [];
     final existing = books.where((b) =>
         (result.isbn13 != null && result.isbn13!.isNotEmpty &&
             b.isbn == result.isbn13) ||
         (result.isbn10 != null && result.isbn10!.isNotEmpty &&
             b.isbn == result.isbn10)).firstOrNull;
 
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                margin: const EdgeInsets.only(bottom: 16),
-                decoration: BoxDecoration(
-                  color: AppColors.dim,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _CoverThumbnail(
-                    url: result.thumbnailUrl, width: 80, height: 112),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        result.title,
-                        style: const TextStyle(
-                            color: AppColors.cream,
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold),
-                        maxLines: 3,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 4),
-                      if (result.authors.isNotEmpty)
-                        Text(
-                          result.authors.join(', '),
-                          style: const TextStyle(
-                              color: AppColors.muted, fontSize: 13),
-                        ),
-                      if ((result.publisher?.isNotEmpty ?? false) ||
-                          (result.publishedDate?.isNotEmpty ?? false))
-                        Text(
-                          [result.publisher ?? '', result.publishedDate ?? '']
-                              .where((s) => s.isNotEmpty)
-                              .join(' · '),
-                          style: const TextStyle(
-                              color: AppColors.muted, fontSize: 12),
-                        ),
-                      if (isbn.isNotEmpty)
-                        Text(
-                          'ISBN $isbn',
-                          style: const TextStyle(
-                              color: AppColors.dim, fontSize: 11),
-                        ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            const Divider(color: AppColors.dim),
-            const SizedBox(height: 12),
-            if (existing != null) ...[
-              const Text('이미 서가에 있습니다',
-                  style: TextStyle(color: AppColors.muted, fontSize: 14)),
-              const SizedBox(height: 4),
+    if (_savedStatus != null) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.check_circle, color: AppColors.gold, size: 18),
+              const SizedBox(width: 8),
               Text(
-                _statusLabel(existing.status),
+                '서가에 추가했습니다 · ${_statusLabel(_savedStatus!)}',
                 style: const TextStyle(color: AppColors.gold, fontSize: 14),
               ),
-            ] else ...[
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: AppColors.muted,
-                        side: const BorderSide(color: AppColors.dim),
-                      ),
-                      onPressed: () {
-                        Navigator.of(context).pop();
-                        context.push('/add', extra: {
-                          'result': result,
-                          'status': 'wishlist',
-                        });
-                      },
-                      child: const Text('희망도서로 추가'),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.gold,
-                        foregroundColor: AppColors.bg,
-                      ),
-                      onPressed: () {
-                        Navigator.of(context).pop();
-                        context.push('/add', extra: {
-                          'result': result,
-                          'status': 'owned',
-                        });
-                      },
-                      child: const Text('소장으로 추가'),
-                    ),
-                  ),
-                ],
-              ),
-              if (isbn.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                SizedBox(
-                  width: double.infinity,
-                  child: TextButton.icon(
-                    icon: const Icon(Icons.local_library_outlined, size: 16),
-                    label: const Text('가까운 도서관 검색'),
-                    style: TextButton.styleFrom(
-                        foregroundColor: AppColors.gold),
-                    onPressed: () {
-                      Navigator.of(context).pop();
-                      onSwitchToLibrary(isbn: isbn);
-                    },
-                  ),
-                ),
-              ],
             ],
+          ),
+          if (isbn.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            _libraryButton(isbn),
           ],
-        ),
+        ],
+      );
+    }
+
+    if (existing != null) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('이미 서가에 있습니다',
+              style: TextStyle(color: AppColors.muted, fontSize: 14)),
+          const SizedBox(height: 4),
+          Text(
+            _statusLabel(existing.status),
+            style: const TextStyle(color: AppColors.gold, fontSize: 14),
+          ),
+          if (isbn.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            _libraryButton(isbn),
+          ],
+        ],
+      );
+    }
+
+    return Column(
+      children: [
+        if (_saving)
+          const Center(
+            child: Padding(
+              padding: EdgeInsets.symmetric(vertical: 8),
+              child: CircularProgressIndicator(color: AppColors.gold),
+            ),
+          )
+        else
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.muted,
+                    side: const BorderSide(color: AppColors.dim),
+                  ),
+                  onPressed: () => _saveBook('wishlist'),
+                  child: const Text('희망도서로 추가'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.gold,
+                    foregroundColor: AppColors.bg,
+                  ),
+                  onPressed: () => _saveBook('owned'),
+                  child: const Text('소장으로 추가'),
+                ),
+              ),
+            ],
+          ),
+        if (isbn.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          _libraryButton(isbn),
+        ],
+      ],
+    );
+  }
+
+  Widget _libraryButton(String isbn) {
+    final ctx = context;
+    return SizedBox(
+      width: double.infinity,
+      child: TextButton.icon(
+        icon: const Icon(Icons.local_library_outlined, size: 16),
+        label: const Text('가까운 도서관 검색'),
+        style: TextButton.styleFrom(foregroundColor: AppColors.gold),
+        onPressed: () {
+          Navigator.of(ctx).pop();
+          widget.onSwitchToLibrary(isbn: isbn);
+        },
       ),
     );
   }

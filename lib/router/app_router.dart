@@ -75,17 +75,9 @@ final appRouter = GoRouter(
       path: '/add',
       builder: (context, state) {
         final extra = state.extra;
-        final searchResult = extra is BookSearchResult
-            ? extra
-            : (extra is Map && extra['result'] is BookSearchResult)
-                ? extra['result'] as BookSearchResult
-                : null;
-        final initialStatus =
-            extra is Map ? extra['status'] as String? : null;
         return AddBookScreen(
-          editBook: extra is Book ? extra : null,
-          searchResult: searchResult,
-          initialStatus: initialStatus,
+          editBook:      extra is Book ? extra : null,
+          searchResult:  extra is BookSearchResult ? extra : null,
         );
       },
     ),
