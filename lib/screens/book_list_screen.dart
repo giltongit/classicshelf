@@ -135,24 +135,31 @@ class _BookCard extends ConsumerWidget {
                     ),
                     const SizedBox(height: 8),
                     Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        _StatusBadge(status: book.status),
-                        if (book.location?.isNotEmpty == true) ...[
-                          const SizedBox(width: 8),
-                          const Icon(Icons.bookmarks_outlined,
-                              size: 12, color: AppColors.muted),
-                          const SizedBox(width: 4),
-                          Flexible(
-                            child: Text(
-                              book.location!,
-                              style: const TextStyle(
-                                  fontSize: 12, color: AppColors.muted),
-                              overflow: TextOverflow.ellipsis,
-                              maxLines: 1,
-                            ),
-                          ),
-                        ],
-                        const Spacer(),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            _StatusBadge(status: book.status),
+                            if (book.location?.isNotEmpty == true) ...[
+                              const SizedBox(width: 8),
+                              const Icon(Icons.bookmarks_outlined,
+                                  size: 12, color: AppColors.muted),
+                              const SizedBox(width: 4),
+                              ConstrainedBox(
+                                constraints:
+                                    const BoxConstraints(maxWidth: 100),
+                                child: Text(
+                                  book.location!,
+                                  style: const TextStyle(
+                                      fontSize: 12, color: AppColors.muted),
+                                  overflow: TextOverflow.ellipsis,
+                                  maxLines: 1,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
                         SizedBox(
                           width: 40,
                           height: 26,
