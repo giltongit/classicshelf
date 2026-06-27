@@ -10,6 +10,7 @@ import '../providers/providers.dart';
 import '../services/book_search_service.dart';
 import '../services/library_search_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/region_code.dart';
 
 class UnifiedSearchScreen extends ConsumerStatefulWidget {
   final int initialTab;
@@ -121,7 +122,17 @@ class _UnifiedSearchScreenState extends ConsumerState<UnifiedSearchScreen>
     }
 
     try {
-      final results = await LibrarySearchService().searchByIsbn(clean);
+      String region = '11'; // 기본값 서울
+      if (_userPosition != null) {
+        region = regionCodeFromLatLng(
+              _userPosition!.latitude,
+              _userPosition!.longitude,
+            ) ??
+            '11';
+      }
+
+      final results =
+          await LibrarySearchService().searchByIsbn(clean, region: region);
 
       if (_userPosition != null) {
         for (final lib in results) {
@@ -209,7 +220,7 @@ class _UnifiedSearchScreenState extends ConsumerState<UnifiedSearchScreen>
           controller: _tabController,
           tabs: const [
             Tab(text: '도서 검색'),
-            Tab(text: '도서관 검색'),
+            Tab(text: '가까운 도서관 검색'),
           ],
         ),
       ),
@@ -227,6 +238,7 @@ class _UnifiedSearchScreenState extends ConsumerState<UnifiedSearchScreen>
             results: _libraryResults,
             loading: _libraryLoading,
             error: _libraryError,
+            currentIsbn: _currentIsbn,
             onRetry: () => _searchLibraries(isbn: _currentIsbn ?? ''),
           ),
         ],
@@ -482,7 +494,7 @@ class _BookDetailSheet extends ConsumerWidget {
                   width: double.infinity,
                   child: TextButton.icon(
                     icon: const Icon(Icons.local_library_outlined, size: 16),
-                    label: const Text('도서관에서 찾기'),
+                    label: const Text('가까운 도서관 검색'),
                     style: TextButton.styleFrom(
                         foregroundColor: AppColors.gold),
                     onPressed: () {
@@ -515,12 +527,14 @@ class _LibrarySearchTab extends StatelessWidget {
   final List<LibrarySearchResult> results;
   final bool loading;
   final String? error;
+  final String? currentIsbn;
   final VoidCallback onRetry;
 
   const _LibrarySearchTab({
     required this.results,
     required this.loading,
     required this.error,
+    required this.currentIsbn,
     required this.onRetry,
   });
 
@@ -552,12 +566,15 @@ class _LibrarySearchTab extends StatelessWidget {
       );
     }
     if (results.isEmpty) {
-      return const Center(
+      final msg = currentIsbn != null
+          ? '이 지역에 소장한 도서관이 없습니다'
+          : '도서 검색 탭에서 [가까운 도서관 검색]을\n눌러 소장 도서관을 찾아보세요';
+      return Center(
         child: Padding(
-          padding: EdgeInsets.all(24),
+          padding: const EdgeInsets.all(24),
           child: Text(
-            'ISBN으로 소장 도서관을 찾습니다\n도서 검색 탭에서 [도서관에서 찾기]를 눌러보세요',
-            style: TextStyle(color: AppColors.muted, height: 1.6),
+            msg,
+            style: const TextStyle(color: AppColors.muted, height: 1.6),
             textAlign: TextAlign.center,
           ),
         ),
