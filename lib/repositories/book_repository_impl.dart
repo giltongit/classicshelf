@@ -221,6 +221,16 @@ class BookRepositoryImpl implements BookRepository {
   }
 
   @override
+  Future<void> togglePriorityRead(int localId) async {
+    final row = await (_db.select(_db.books)
+          ..where((t) => t.id.equals(localId)))
+        .getSingleOrNull();
+    if (row == null) return;
+    await (_db.update(_db.books)..where((t) => t.id.equals(localId)))
+        .write(BooksCompanion(priorityRead: Value(!row.priorityRead)));
+  }
+
+  @override
   Future<void> reconcileLocalOnlyToRemote() async {
     final uid = Supabase.instance.client.auth.currentUser?.id;
     if (uid == null) {

@@ -43,6 +43,9 @@ abstract interface class BookRepository {
 
   Future<int> pendingQueueCount();
 
+  /// Drift만 업데이트 — Supabase/sync_queue 없음.
+  Future<void> togglePriorityRead(int localId);
+
   /// 로컬에 supabaseId가 있으나 원격에 없는 행을 동일 uuid로 재삽입.
   /// 원격에 이미 있는 행은 건드리지 않는다(보수적).
   Future<void> reconcileLocalOnlyToRemote();

@@ -96,12 +96,12 @@ class BookListScreen extends ConsumerWidget {
   }
 }
 
-class _BookCard extends StatelessWidget {
+class _BookCard extends ConsumerWidget {
   final Book book;
   const _BookCard({required this.book});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return Material(
       color: AppColors.surface2,
       borderRadius: BorderRadius.circular(10),
@@ -134,7 +134,48 @@ class _BookCard extends StatelessWidget {
                       style: const TextStyle(color: AppColors.muted, fontSize: 12),
                     ),
                     const SizedBox(height: 8),
-                    _StatusBadge(status: book.status),
+                    Row(
+                      children: [
+                        _StatusBadge(status: book.status),
+                        if (book.location?.isNotEmpty == true) ...[
+                          const SizedBox(width: 8),
+                          const Icon(Icons.bookmarks_outlined,
+                              size: 12, color: AppColors.muted),
+                          const SizedBox(width: 4),
+                          Flexible(
+                            child: Text(
+                              book.location!,
+                              style: const TextStyle(
+                                  fontSize: 12, color: AppColors.muted),
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
+                            ),
+                          ),
+                        ],
+                        const Spacer(),
+                        GestureDetector(
+                          onTap: () async {
+                            await ref
+                                .read(bookRepositoryProvider)
+                                .togglePriorityRead(book.localId!);
+                            ref.invalidate(booksProvider);
+                          },
+                          child: SizedBox(
+                            width: 32,
+                            height: 32,
+                            child: Icon(
+                              book.priorityRead
+                                  ? Icons.star_rounded
+                                  : Icons.star_outline_rounded,
+                              size: 20,
+                              color: book.priorityRead
+                                  ? AppColors.gold
+                                  : AppColors.muted,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ],
                 ),
               ),
