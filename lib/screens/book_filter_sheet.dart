@@ -120,7 +120,7 @@ class _BookFilterSheetState extends State<BookFilterSheet> {
                         setState(() => _draft = _draft.copyWith(media: v)),
                   ),
                   _SectionTitle('첫 글자'),
-                  _InitialChips(
+                  _InitialSection(
                     selected: _draft.initial,
                     onChanged: (v) =>
                         setState(() => _draft = _draft.copyWith(initial: v)),
@@ -274,54 +274,158 @@ class _MultiChips extends StatelessWidget {
   }
 }
 
-// ── 초성 칩 (단일 선택, 탭 다시 하면 해제) ──────────────────────────────────────
+// ── 초성 accordion (한글/영어/숫자 드롭다운 3개) ────────────────────────────────
 
-class _InitialChips extends StatelessWidget {
+class _InitialSection extends StatefulWidget {
   final String? selected;
   final ValueChanged<String?> onChanged;
 
-  const _InitialChips({required this.selected, required this.onChanged});
+  const _InitialSection({required this.selected, required this.onChanged});
 
-  static const _all = [
-    'ㄱ', 'ㄲ', 'ㄴ', 'ㄷ', 'ㄸ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅃ',
-    'ㅅ', 'ㅆ', 'ㅇ', 'ㅈ', 'ㅉ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ',
+  @override
+  State<_InitialSection> createState() => _InitialSectionState();
+}
+
+class _InitialSectionState extends State<_InitialSection> {
+  int? _open; // 0=한글, 1=영어, 2=숫자
+
+  static const _korean = [
+    'ㄱ', 'ㄴ', 'ㄷ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅅ',
+    'ㅇ', 'ㅈ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ',
+  ];
+  static const _english = [
     'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M',
     'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
-    '#',
   ];
+  static const _digits = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
+
+  int? _groupOf(String? v) {
+    if (v == null) return null;
+    if (_korean.contains(v)) return 0;
+    if (_english.contains(v)) return 1;
+    if (_digits.contains(v)) return 2;
+    return null;
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Wrap(
-      spacing: 6,
-      runSpacing: 6,
-      children: _all.map((ch) {
-        final on = selected == ch;
-        return GestureDetector(
-          onTap: () => onChanged(on ? null : ch),
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(child: _buildDropdown(0, '한글', _korean)),
+        const SizedBox(width: 8),
+        Expanded(child: _buildDropdown(1, '영어', _english)),
+        const SizedBox(width: 8),
+        Expanded(child: _buildDropdown(2, '숫자', _digits)),
+      ],
+    );
+  }
+
+  Widget _buildDropdown(int idx, String label, List<String> items) {
+    final isOpen = _open == idx;
+    final hasSelection = _groupOf(widget.selected) == idx;
+    final headerLabel =
+        hasSelection ? '$label · ${widget.selected}' : label;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        GestureDetector(
+          onTap: () => setState(() => _open = isOpen ? null : idx),
           child: Container(
-            width: 36,
-            height: 32,
-            alignment: Alignment.center,
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             decoration: BoxDecoration(
-              color: on
+              color: hasSelection
                   ? AppColors.gold.withValues(alpha: 0.15)
                   : AppColors.surface2,
-              borderRadius: BorderRadius.circular(6),
+              borderRadius: BorderRadius.circular(8),
               border: Border.all(
-                  color: on ? AppColors.gold : AppColors.dim),
+                  color: hasSelection ? AppColors.gold : AppColors.dim),
             ),
-            child: Text(
-              ch,
-              style: TextStyle(
-                color: on ? AppColors.gold : AppColors.muted,
-                fontSize: 12,
-                fontWeight: on ? FontWeight.w600 : FontWeight.normal,
-              ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    headerLabel,
+                    style: TextStyle(
+                      color:
+                          hasSelection ? AppColors.gold : AppColors.muted,
+                      fontSize: 12,
+                      fontWeight: hasSelection
+                          ? FontWeight.w600
+                          : FontWeight.normal,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                if (hasSelection)
+                  GestureDetector(
+                    onTap: () => widget.onChanged(null),
+                    child: const Icon(Icons.close,
+                        size: 14, color: AppColors.gold),
+                  )
+                else
+                  Icon(
+                    isOpen ? Icons.expand_less : Icons.expand_more,
+                    size: 14,
+                    color: AppColors.dim,
+                  ),
+              ],
             ),
           ),
-        );
-      }).toList(),
+        ),
+        ClipRect(
+          child: AnimatedSize(
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeInOut,
+            child: isOpen
+                ? Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Wrap(
+                      spacing: 4,
+                      runSpacing: 4,
+                      children: items.map((ch) {
+                        final isSelected = widget.selected == ch;
+                        return GestureDetector(
+                          onTap: () {
+                            widget.onChanged(isSelected ? null : ch);
+                            setState(() => _open = null);
+                          },
+                          child: Container(
+                            width: 28,
+                            height: 26,
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: isSelected
+                                  ? AppColors.gold.withValues(alpha: 0.15)
+                                  : AppColors.surface2,
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(
+                                  color: isSelected
+                                      ? AppColors.gold
+                                      : AppColors.dim),
+                            ),
+                            child: Text(
+                              ch,
+                              style: TextStyle(
+                                color: isSelected
+                                    ? AppColors.gold
+                                    : AppColors.muted,
+                                fontSize: 11,
+                                fontWeight: isSelected
+                                    ? FontWeight.w600
+                                    : FontWeight.normal,
+                              ),
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  )
+                : const SizedBox.shrink(),
+          ),
+        ),
+      ],
     );
   }
 }

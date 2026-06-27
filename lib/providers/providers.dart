@@ -81,20 +81,22 @@ final libraryNameProvider =
 
 // ── 책 필터/정렬 ───────────────────────────────────────────────────────────────
 
-const _kInitials = [
-  'ㄱ', 'ㄲ', 'ㄴ', 'ㄷ', 'ㄸ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅃ',
-  'ㅅ', 'ㅆ', 'ㅇ', 'ㅈ', 'ㅉ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ',
-];
-
 String? bookGroupKey(String title) {
-  if (title.isEmpty) return null;
-  final code = title.codeUnitAt(0);
+  final trimmed = title.trimLeft();
+  if (trimmed.isEmpty) return null;
+  final code = trimmed.codeUnitAt(0);
+  // 한글 음절: 쌍자음 통합 (ㄲ→ㄱ, ㄸ→ㄷ, ㅃ→ㅂ, ㅆ→ㅅ, ㅉ→ㅈ)
   if (code >= 0xAC00 && code <= 0xD7A3) {
-    return _kInitials[(code - 0xAC00) ~/ 588];
+    const map = [
+      'ㄱ', 'ㄱ', 'ㄴ', 'ㄷ', 'ㄷ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅂ',
+      'ㅅ', 'ㅅ', 'ㅇ', 'ㅈ', 'ㅈ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ',
+    ];
+    return map[(code - 0xAC00) ~/ 588];
   }
-  final ch = title[0].toUpperCase();
-  if (ch.codeUnitAt(0) >= 65 && ch.codeUnitAt(0) <= 90) return ch;
-  if (ch.codeUnitAt(0) >= 48 && ch.codeUnitAt(0) <= 57) return '#';
+  if ((code >= 65 && code <= 90) || (code >= 97 && code <= 122)) {
+    return trimmed[0].toUpperCase();
+  }
+  if (code >= 48 && code <= 57) return trimmed[0];
   return null;
 }
 
