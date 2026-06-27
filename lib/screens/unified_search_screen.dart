@@ -640,7 +640,7 @@ class _BookDetailSheetState extends ConsumerState<_BookDetailSheet> {
       width: double.infinity,
       child: TextButton.icon(
         icon: const Icon(Icons.local_library_outlined, size: 16),
-        label: const Text('가까운 도서관 검색'),
+        label: const Text('가까운 도서관에서 이 책 찾아보기'),
         style: TextButton.styleFrom(foregroundColor: AppColors.gold),
         onPressed: () {
           Navigator.of(ctx).pop();

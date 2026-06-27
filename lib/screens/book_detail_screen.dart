@@ -141,7 +141,7 @@ class _BookDetailBody extends StatelessWidget {
                     width: double.infinity,
                     child: OutlinedButton.icon(
                       icon: const Icon(Icons.local_library_outlined, size: 18),
-                      label: const Text('도서관에서 찾기'),
+                      label: const Text('가까운 도서관에서 이 책 찾아보기'),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: AppColors.gold,
                         side: BorderSide(
