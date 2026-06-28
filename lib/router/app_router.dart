@@ -15,6 +15,7 @@ import '../screens/stats_monthly_screen.dart';
 import '../screens/stats_screen.dart';
 import '../screens/stats_wishlist_screen.dart';
 import '../screens/stats_year_screen.dart';
+import '../screens/book_search_screen.dart';
 import '../screens/unified_search_screen.dart';
 
 final appRouter = GoRouter(
@@ -86,11 +87,13 @@ final appRouter = GoRouter(
       builder: (context, state) {
         final p = state.uri.queryParameters;
         return UnifiedSearchScreen(
-          initialTab:   p['tab'] == 'library' ? 1 : 0,
-          initialIsbn:  p['isbn'],
-          initialQuery: p['query'],
+          initialIsbn: p['isbn'],
         );
       },
+    ),
+    GoRoute(
+      path: '/book-search',
+      builder: (context, state) => const BookSearchScreen(),
     ),
     GoRoute(
       path: '/scan',

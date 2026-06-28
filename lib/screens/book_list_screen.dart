@@ -56,7 +56,7 @@ class BookListScreen extends ConsumerWidget {
           IconButton(
             icon: const Icon(Icons.search_rounded),
             tooltip: '도서 검색',
-            onPressed: () => context.push('/search'),
+            onPressed: () => context.push('/book-search'),
           ),
           Stack(
             alignment: Alignment.topRight,
