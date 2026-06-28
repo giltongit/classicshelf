@@ -59,6 +59,21 @@ class _BookDetailBody extends StatelessWidget {
             pinned: true,
             backgroundColor: AppColors.surface,
             foregroundColor: AppColors.cream,
+            leading: Container(
+              margin: const EdgeInsets.symmetric(
+                  vertical: 8, horizontal: 4),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.35),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: IconButton(
+                icon: const Icon(Icons.arrow_back),
+                padding: const EdgeInsets.all(6),
+                constraints: const BoxConstraints(),
+                iconSize: 22,
+                onPressed: () => Navigator.of(context).pop(),
+              ),
+            ),
             flexibleSpace: FlexibleSpaceBar(
               titlePadding: const EdgeInsets.fromLTRB(56, 0, 100, 14),
               title: Text(
