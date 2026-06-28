@@ -3,6 +3,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../models/library_search_result.dart';
+import '../services/geocoding_service.dart';
 import '../services/library_search_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/region_code.dart';
@@ -27,6 +28,15 @@ class _UnifiedSearchScreenState extends State<UnifiedSearchScreen> {
   String? _cachedClassNo;
   Position? _userPosition;
 
+  // 위치 모드
+  bool _useCustomLocation = false;
+  final _locationController = TextEditingController();
+  bool _geocoding = false;
+  String? _geocodingError;
+  String? _customLocationLabel;
+  double? _customLat;
+  double? _customLng;
+
   @override
   void initState() {
     super.initState();
@@ -35,6 +45,12 @@ class _UnifiedSearchScreenState extends State<UnifiedSearchScreen> {
         _searchLibraries(isbn: widget.initialIsbn!);
       });
     }
+  }
+
+  @override
+  void dispose() {
+    _locationController.dispose();
+    super.dispose();
   }
 
   Future<void> _searchLibraries({required String isbn}) async {
@@ -48,42 +64,49 @@ class _UnifiedSearchScreenState extends State<UnifiedSearchScreen> {
       _cachedClassNo = null;
     });
 
-    if (_userPosition == null) {
-      try {
-        var perm = await Geolocator.checkPermission();
-        if (perm == LocationPermission.denied) {
-          perm = await Geolocator.requestPermission();
-        }
-        if (perm != LocationPermission.denied &&
-            perm != LocationPermission.deniedForever) {
-          _userPosition = await Geolocator.getCurrentPosition(
-            locationSettings: const LocationSettings(
-              accuracy: LocationAccuracy.low,
-            ),
-          ).timeout(const Duration(seconds: 5));
-        }
-      } catch (_) {}
+    // 위치 결정
+    double? searchLat;
+    double? searchLng;
+
+    if (_useCustomLocation && _customLat != null && _customLng != null) {
+      searchLat = _customLat;
+      searchLng = _customLng;
+    } else {
+      if (_userPosition == null) {
+        try {
+          var perm = await Geolocator.checkPermission();
+          if (perm == LocationPermission.denied) {
+            perm = await Geolocator.requestPermission();
+          }
+          if (perm != LocationPermission.denied &&
+              perm != LocationPermission.deniedForever) {
+            _userPosition = await Geolocator.getCurrentPosition(
+              locationSettings: const LocationSettings(
+                accuracy: LocationAccuracy.low,
+              ),
+            ).timeout(const Duration(seconds: 5));
+          }
+        } catch (_) {}
+      }
+      searchLat = _userPosition?.latitude;
+      searchLng = _userPosition?.longitude;
     }
 
     try {
       String region = '11';
-      if (_userPosition != null) {
-        region = regionCodeFromLatLng(
-              _userPosition!.latitude,
-              _userPosition!.longitude,
-            ) ??
-            '11';
+      if (searchLat != null && searchLng != null) {
+        region = regionCodeFromLatLng(searchLat, searchLng) ?? '11';
       }
 
       final results =
           await LibrarySearchService().searchByIsbn(clean, region: region);
 
-      if (_userPosition != null) {
+      if (searchLat != null && searchLng != null) {
         for (final lib in results) {
           if (lib.lat != null && lib.lng != null) {
             lib.distanceKm = Geolocator.distanceBetween(
-              _userPosition!.latitude,
-              _userPosition!.longitude,
+              searchLat,
+              searchLng,
               lib.lat!,
               lib.lng!,
             ) / 1000;
@@ -113,12 +136,45 @@ class _UnifiedSearchScreenState extends State<UnifiedSearchScreen> {
     }
   }
 
+  Future<void> _geocodeAndSearch() async {
+    final input = _locationController.text.trim();
+    if (input.isEmpty) return;
+
+    setState(() {
+      _geocoding = true;
+      _geocodingError = null;
+    });
+
+    final result = await GeocodingService().search(input);
+
+    if (result == null) {
+      setState(() {
+        _geocoding = false;
+        _geocodingError = '위치를 찾을 수 없습니다. 구/동 단위로 입력해보세요.';
+      });
+      return;
+    }
+
+    _customLat = result.lat;
+    _customLng = result.lng;
+    _customLocationLabel = input;
+
+    setState(() {
+      _geocoding = false;
+      _useCustomLocation = true;
+    });
+
+    if (_currentIsbn != null) {
+      _searchLibraries(isbn: _currentIsbn!);
+    }
+  }
+
   Future<void> _showLibraryDetailModal({
     required LibrarySearchResult lib,
   }) async {
     if (_cachedClassNo == null && _currentIsbn != null) {
-      _cachedClassNo = await LibrarySearchService()
-          .getClassNo(_currentIsbn!);
+      _cachedClassNo =
+          await LibrarySearchService().getClassNo(_currentIsbn!);
     }
 
     BookExistResult? existResult;
@@ -149,13 +205,175 @@ class _UnifiedSearchScreenState extends State<UnifiedSearchScreen> {
       appBar: AppBar(
         title: const Text('가까운 도서관 검색 결과'),
       ),
-      body: _LibrarySearchTab(
-        results: _libraryResults,
-        loading: _libraryLoading,
-        error: _libraryError,
-        currentIsbn: _currentIsbn,
-        onRetry: () => _searchLibraries(isbn: _currentIsbn ?? ''),
-        onLibraryTap: (lib) => _showLibraryDetailModal(lib: lib),
+      body: Column(
+        children: [
+          _buildLocationSelector(),
+          Expanded(
+            child: _LibrarySearchTab(
+              results: _libraryResults,
+              loading: _libraryLoading,
+              error: _libraryError,
+              currentIsbn: _currentIsbn,
+              onRetry: () => _searchLibraries(isbn: _currentIsbn ?? ''),
+              onLibraryTap: (lib) => _showLibraryDetailModal(lib: lib),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLocationSelector() {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+      color: AppColors.surface2,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              _locationChip(
+                label: '현재 위치',
+                icon: Icons.my_location,
+                selected: !_useCustomLocation,
+                onTap: () {
+                  setState(() {
+                    _useCustomLocation = false;
+                    _geocodingError = null;
+                  });
+                  if (_currentIsbn != null) {
+                    _searchLibraries(isbn: _currentIsbn!);
+                  }
+                },
+              ),
+              const SizedBox(width: 8),
+              _locationChip(
+                label: '직접 입력',
+                icon: Icons.edit_location_outlined,
+                selected: _useCustomLocation,
+                onTap: () {
+                  setState(() {
+                    _useCustomLocation = true;
+                  });
+                },
+              ),
+            ],
+          ),
+          if (_useCustomLocation) ...[
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _locationController,
+                    style: const TextStyle(
+                        color: AppColors.cream, fontSize: 14),
+                    decoration: InputDecoration(
+                      hintText: '예: 해운대구 좌동, 강남구 역삼동',
+                      hintStyle: const TextStyle(
+                          color: AppColors.dim, fontSize: 13),
+                      filled: true,
+                      fillColor: AppColors.surface,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide.none,
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                          vertical: 8, horizontal: 12),
+                      isDense: true,
+                    ),
+                    textInputAction: TextInputAction.search,
+                    onSubmitted: (_) => _geocodeAndSearch(),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                _geocoding
+                    ? const SizedBox(
+                        width: 36,
+                        height: 36,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.gold,
+                          foregroundColor: AppColors.bg,
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 8),
+                          minimumSize: Size.zero,
+                          tapTargetSize:
+                              MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        onPressed: _geocodeAndSearch,
+                        child: const Text('검색',
+                            style: TextStyle(fontSize: 13)),
+                      ),
+              ],
+            ),
+            if (_geocodingError != null) ...[
+              const SizedBox(height: 4),
+              Text(
+                _geocodingError!,
+                style:
+                    const TextStyle(color: AppColors.red, fontSize: 12),
+              ),
+            ],
+            if (_customLocationLabel != null &&
+                _geocodingError == null) ...[
+              const SizedBox(height: 4),
+              Text(
+                '📍 $_customLocationLabel 기준으로 검색합니다',
+                style: const TextStyle(
+                    color: AppColors.muted, fontSize: 12),
+              ),
+            ],
+            const SizedBox(height: 4),
+            const Text(
+              '구/동 단위로 입력하면 정확도가 높아집니다',
+              style:
+                  TextStyle(color: AppColors.dim, fontSize: 11),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _locationChip({
+    required String label,
+    required IconData icon,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: selected
+              ? AppColors.gold.withValues(alpha: 0.15)
+              : AppColors.surface,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: selected ? AppColors.gold : AppColors.dim,
+            width: 0.5,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon,
+                size: 14,
+                color: selected ? AppColors.gold : AppColors.muted),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: TextStyle(
+                color: selected ? AppColors.gold : AppColors.muted,
+                fontSize: 13,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
