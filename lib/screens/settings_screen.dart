@@ -32,34 +32,6 @@ class SettingsScreen extends ConsumerWidget {
       appBar: AppBar(title: const Text('설정')),
       body: ListView(
         children: [
-          const _SectionHeader('계정'),
-          Padding(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                authAsync.when(
-                  loading: () => const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 12),
-                    child: Center(
-                        child: CircularProgressIndicator(color: AppColors.gold)),
-                  ),
-                  error: (_, _) => const Text(
-                    '연결에 실패했습니다. 다시 시도해 주세요.',
-                    style: TextStyle(color: AppColors.red),
-                  ),
-                  data: (isLinked) => isLinked
-                      ? _AccountLinked(email: authService.linkedGoogleEmail)
-                      : _AccountUnlinked(
-                          onTap: () => ref
-                              .read(authNotifierProvider.notifier)
-                              .linkGoogle()),
-                ),
-
-              ],
-            ),
-          ),
           const _SectionHeader('홈 배경 이미지'),
           Padding(
             padding:
@@ -93,7 +65,7 @@ class SettingsScreen extends ConsumerWidget {
               ],
             ),
           ),
-          const _SectionHeader('데이터'),
+          const _SectionHeader('데이터 관리'),
           _SettingsTile(
             icon: Icons.download_outlined,
             title: 'CSV로 내보내기',
@@ -105,6 +77,33 @@ class SettingsScreen extends ConsumerWidget {
             title: 'CSV 가져오기',
             subtitle: 'CSV 파일에서 도서 목록을 불러옵니다',
             onTap: () => context.push('/csv-import'),
+          ),
+          const _SectionHeader('계정'),
+          Padding(
+            padding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                authAsync.when(
+                  loading: () => const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 12),
+                    child: Center(
+                        child: CircularProgressIndicator(color: AppColors.gold)),
+                  ),
+                  error: (_, _) => const Text(
+                    '연결에 실패했습니다. 다시 시도해 주세요.',
+                    style: TextStyle(color: AppColors.red),
+                  ),
+                  data: (isLinked) => isLinked
+                      ? _AccountLinked(email: authService.linkedGoogleEmail)
+                      : _AccountUnlinked(
+                          onTap: () => ref
+                              .read(authNotifierProvider.notifier)
+                              .linkGoogle()),
+                ),
+              ],
+            ),
           ),
         ],
       ),
