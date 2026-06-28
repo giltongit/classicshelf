@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import '../features/home/home_background_notifier.dart';
 import '../providers/providers.dart';
 import '../services/csv_export_service.dart';
+import '../services/library_search_service.dart';
 import '../theme/app_theme.dart';
 
 final _csvExportServiceProvider = Provider<CsvExportService>((ref) {
@@ -77,6 +78,12 @@ class SettingsScreen extends ConsumerWidget {
             title: 'CSV 가져오기',
             subtitle: 'CSV 파일에서 도서 목록을 불러옵니다',
             onTap: () => context.push('/csv-import'),
+          ),
+          _SettingsTile(
+            icon: Icons.auto_fix_high,
+            title: 'KDC 자동 채우기',
+            subtitle: 'ISBN이 있는 책에 KDC 분류기호를 자동으로 입력합니다',
+            onTap: () => _backfillKdc(context, ref),
           ),
           const _SectionHeader('계정'),
           Padding(
@@ -190,6 +197,52 @@ class SettingsScreen extends ConsumerWidget {
       if (!context.mounted) return;
       messenger.showSnackBar(
         SnackBar(content: Text('내보내기 실패: $e')),
+      );
+    }
+  }
+
+  Future<void> _backfillKdc(BuildContext context, WidgetRef ref) async {
+    final books = await ref.read(booksProvider.future);
+    final targets = books.where((b) => (b.kdc == null || b.kdc!.isEmpty) && (b.isbn?.isNotEmpty ?? false)).toList();
+    if (!context.mounted) return;
+
+    if (targets.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('KDC를 채울 책이 없습니다 (ISBN 없거나 이미 입력됨)')),
+      );
+      return;
+    }
+
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1915),
+        content: Text(
+          '${targets.length}권에 KDC 기호를 가져오는 중...',
+          style: const TextStyle(color: AppColors.cream),
+        ),
+      ),
+    );
+
+    final service = LibrarySearchService();
+    final repo = ref.read(bookRepositoryProvider);
+    int updated = 0;
+
+    for (final book in targets) {
+      final classNo = await service.getClassNo(book.isbn!);
+      if (classNo != null && classNo.isNotEmpty) {
+        await repo.updateBook(book.copyWith(kdc: classNo));
+        updated++;
+      }
+    }
+
+    ref.invalidate(booksProvider);
+
+    if (context.mounted) {
+      Navigator.of(context, rootNavigator: true).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$updated권에 KDC 기호를 입력했습니다')),
       );
     }
   }
