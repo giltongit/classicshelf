@@ -44,7 +44,9 @@ class BookListScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('나의 도서관'),
+        title: ref.watch(libraryNameProvider).whenOrNull(
+          data: (name) => Text(name ?? '나의 도서관'),
+        ) ?? const Text('나의 도서관'),
         actions: [
           IconButton(
             icon: const Icon(Icons.qr_code_scanner),
