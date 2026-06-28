@@ -44,9 +44,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
 
   void _tryPickWishlist(List<Book> books) {
     if (_wishlistPicked) return;
-    final wishlist = books.where((b) => b.status == 'wishlist').toList();
-    if (wishlist.isNotEmpty) {
-      _wishlistBook = wishlist[Random().nextInt(wishlist.length)];
+    final unreadOwned = books.where((b) =>
+        b.status == 'owned' && !b.isRead).toList();
+    if (unreadOwned.isNotEmpty) {
+      _wishlistBook = unreadOwned[Random().nextInt(unreadOwned.length)];
       _wishlistPicked = true;
     } else if (books.isNotEmpty) {
       _wishlistPicked = true;
@@ -105,14 +106,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
 
     _tryPickWishlist(books);
 
-    // 오늘의 책: 미독 소장본 중 날짜 기반 랜덤
-    final unreadOwned =
-        books.where((b) => !b.isRead && b.status == 'owned').toList();
+    // 오늘의 책: 희망 도서 중 날짜 기반 랜덤
+    final wishlistBooks = books.where((b) => b.status == 'wishlist').toList();
     Book? todayBook;
-    if (unreadOwned.isNotEmpty) {
+    if (wishlistBooks.isNotEmpty) {
       final now = DateTime.now();
       final seed = now.year * 10000 + now.month * 100 + now.day;
-      todayBook = unreadOwned[Random(seed).nextInt(unreadOwned.length)];
+      todayBook = wishlistBooks[Random(seed).nextInt(wishlistBooks.length)];
     }
 
     final unreadCount = books.where((b) => !b.isRead).length;
@@ -403,7 +403,7 @@ class _WishlistCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                '좀 오래 묵힌 책',
+                '좀 오래 묵은 책',
                 style: TextStyle(
                     color: AppColors.gold,
                     fontSize: 11,
