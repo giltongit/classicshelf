@@ -4,6 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'package:drift/drift.dart' show Value;
+
+import '../database/app_database.dart' show BooksCompanion;
 import '../features/home/home_background_notifier.dart';
 import '../providers/providers.dart';
 import '../services/csv_export_service.dart';
@@ -84,6 +87,17 @@ class SettingsScreen extends ConsumerWidget {
             title: 'KDC 자동 채우기',
             subtitle: 'ISBN이 있는 책에 KDC 분류기호를 자동으로 입력합니다',
             onTap: () => _backfillKdc(context, ref),
+          ),
+          ListTile(
+            leading: const Icon(Icons.cleaning_services_outlined,
+                color: AppColors.muted),
+            title: const Text('"null" 문자열 정리',
+                style: TextStyle(color: AppColors.cream)),
+            subtitle: const Text(
+              '필드에 입력된 "null" 텍스트를 빈 값으로 교체합니다',
+              style: TextStyle(color: AppColors.muted, fontSize: 12),
+            ),
+            onTap: () => _cleanNullStrings(context, ref),
           ),
           const _SectionHeader('계정'),
           Padding(
@@ -245,6 +259,77 @@ class SettingsScreen extends ConsumerWidget {
         SnackBar(content: Text('$updated권에 KDC 기호를 입력했습니다')),
       );
     }
+  }
+
+  Future<void> _cleanNullStrings(
+      BuildContext context, WidgetRef ref) async {
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const AlertDialog(
+        content: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(width: 16),
+            Text('정리 중...'),
+          ],
+        ),
+      ),
+    );
+
+    await Future.microtask(() async {
+      final db = ref.read(databaseProvider);
+      final books = await db.select(db.books).get();
+
+      int count = 0;
+      for (final book in books) {
+        final needsUpdate =
+            book.description == 'null' ||
+            book.publisher   == 'null' ||
+            book.genre       == 'null' ||
+            book.review      == 'null' ||
+            book.callNumber  == 'null' ||
+            book.language    == 'null' ||
+            book.kdc         == 'null' ||
+            book.ddc         == 'null' ||
+            book.lc          == 'null';
+
+        if (!needsUpdate) continue;
+
+        await (db.update(db.books)
+              ..where((t) => t.id.equals(book.id)))
+            .write(BooksCompanion(
+          description: book.description == 'null'
+              ? const Value(null) : const Value.absent(),
+          publisher:   book.publisher   == 'null'
+              ? const Value(null) : const Value.absent(),
+          genre:       book.genre       == 'null'
+              ? const Value(null) : const Value.absent(),
+          review:      book.review      == 'null'
+              ? const Value(null) : const Value.absent(),
+          callNumber:  book.callNumber  == 'null'
+              ? const Value(null) : const Value.absent(),
+          language:    book.language    == 'null'
+              ? const Value(null) : const Value.absent(),
+          kdc:         book.kdc         == 'null'
+              ? const Value(null) : const Value.absent(),
+          ddc:         book.ddc         == 'null'
+              ? const Value(null) : const Value.absent(),
+          lc:          book.lc          == 'null'
+              ? const Value(null) : const Value.absent(),
+        ));
+        count++;
+      }
+
+      if (context.mounted) {
+        Navigator.of(context).pop();
+        ref.invalidate(booksProvider);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$count권 정리 완료')),
+        );
+      }
+    });
   }
 }
 
