@@ -1,6 +1,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:geolocator/geolocator.dart';
 
 import '../models/book.dart';
@@ -42,6 +43,7 @@ class _UnifiedSearchScreenState extends ConsumerState<UnifiedSearchScreen>
   bool _libraryLoading = false;
   String? _libraryError;
   String? _currentIsbn;
+  String? _cachedClassNo;
   Position? _userPosition;
 
   @override
@@ -184,6 +186,36 @@ class _UnifiedSearchScreenState extends ConsumerState<UnifiedSearchScreen>
     }
   }
 
+  Future<void> _showLibraryDetailModal({
+    required LibrarySearchResult lib,
+  }) async {
+    if (_cachedClassNo == null && _currentIsbn != null) {
+      _cachedClassNo = await LibrarySearchService()
+          .getClassNo(_currentIsbn!);
+    }
+
+    BookExistResult? existResult;
+    try {
+      if (_currentIsbn != null) {
+        existResult = await LibrarySearchService().checkBookExist(
+          libCode: lib.libCode,
+          isbn: _currentIsbn!,
+        );
+      }
+    } catch (_) {}
+
+    if (!mounted) return;
+
+    showDialog(
+      context: context,
+      builder: (_) => _LibraryDetailModal(
+        lib: lib,
+        existResult: existResult,
+        classNo: _cachedClassNo,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -240,6 +272,8 @@ class _UnifiedSearchScreenState extends ConsumerState<UnifiedSearchScreen>
             error: _libraryError,
             currentIsbn: _currentIsbn,
             onRetry: () => _searchLibraries(isbn: _currentIsbn ?? ''),
+            onLibraryTap: (lib) =>
+                _showLibraryDetailModal(lib: lib),
           ),
         ],
       ),
@@ -695,6 +729,7 @@ class _LibrarySearchTab extends StatelessWidget {
   final String? error;
   final String? currentIsbn;
   final VoidCallback onRetry;
+  final void Function(LibrarySearchResult) onLibraryTap;
 
   const _LibrarySearchTab({
     required this.results,
@@ -702,6 +737,7 @@ class _LibrarySearchTab extends StatelessWidget {
     required this.error,
     required this.currentIsbn,
     required this.onRetry,
+    required this.onLibraryTap,
   });
 
   @override
@@ -750,7 +786,10 @@ class _LibrarySearchTab extends StatelessWidget {
       itemCount: results.length,
       separatorBuilder: (_, _) =>
           Divider(height: 1, color: AppColors.dim.withValues(alpha: 0.5)),
-      itemBuilder: (_, i) => _LibraryResultCard(lib: results[i]),
+      itemBuilder: (_, i) => _LibraryResultCard(
+        lib: results[i],
+        onTap: () => onLibraryTap(results[i]),
+      ),
     );
   }
 }
@@ -759,12 +798,14 @@ class _LibrarySearchTab extends StatelessWidget {
 
 class _LibraryResultCard extends StatelessWidget {
   final LibrarySearchResult lib;
-  const _LibraryResultCard({required this.lib});
+  final VoidCallback onTap;
+  const _LibraryResultCard({required this.lib, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
     final dist = lib.distanceKm;
     return ListTile(
+      onTap: onTap,
       contentPadding:
           const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       leading:
@@ -787,6 +828,158 @@ class _LibraryResultCard extends StatelessWidget {
             )
           : null,
     );
+  }
+}
+
+// ── _LibraryDetailModal ─────────────────────────────────────────────────────────
+
+class _LibraryDetailModal extends StatelessWidget {
+  final LibrarySearchResult lib;
+  final BookExistResult? existResult;
+  final String? classNo;
+
+  const _LibraryDetailModal({
+    required this.lib,
+    this.existResult,
+    this.classNo,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: AppColors.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.local_library_outlined,
+                    color: AppColors.gold, size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    lib.libName,
+                    style: const TextStyle(
+                      color: AppColors.cream,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            const Divider(color: AppColors.dim),
+            const SizedBox(height: 8),
+            if (lib.address.isNotEmpty)
+              _infoRow(Icons.location_on_outlined, lib.address),
+            if (lib.tel.isNotEmpty)
+              _infoRow(Icons.phone_outlined, lib.tel),
+            const SizedBox(height: 8),
+            const Divider(color: AppColors.dim),
+            const SizedBox(height: 8),
+            if (existResult != null) ...[
+              _statusRow(
+                '소장 여부',
+                existResult!.hasBook ? '소장 중' : '미소장',
+                existResult!.hasBook ? AppColors.gold : AppColors.muted,
+              ),
+              const SizedBox(height: 6),
+              _statusRow(
+                '대출 가능',
+                existResult!.loanAvailable ? '가능' : '불가',
+                existResult!.loanAvailable
+                    ? const Color(0xFF2ECC71)
+                    : AppColors.red,
+              ),
+            ] else
+              const Text(
+                '소장 정보를 불러오지 못했습니다.',
+                style: TextStyle(color: AppColors.muted, fontSize: 13),
+              ),
+            if (classNo != null && classNo!.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              _statusRow('한국십진분류기호', classNo!, AppColors.muted),
+              const SizedBox(height: 2),
+              const Text(
+                '도서관에 따라 일치하지 않을 수 있습니다.',
+                style: TextStyle(color: AppColors.dim, fontSize: 11),
+              ),
+            ],
+            const SizedBox(height: 16),
+            if (lib.lat != null && lib.lng != null)
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.map_outlined, size: 16),
+                  label: const Text('지도 보기'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.gold,
+                    side: BorderSide(
+                        color: AppColors.gold.withValues(alpha: 0.5)),
+                  ),
+                  onPressed: () => _openMap(lib.lat!, lib.lng!),
+                ),
+              ),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('닫기',
+                    style: TextStyle(color: AppColors.muted)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _infoRow(IconData icon, String text) => Padding(
+        padding: const EdgeInsets.only(bottom: 6),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, size: 14, color: AppColors.muted),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(text,
+                  style: const TextStyle(
+                      color: AppColors.muted, fontSize: 13)),
+            ),
+          ],
+        ),
+      );
+
+  Widget _statusRow(String label, String value, Color valueColor) =>
+      Row(
+        children: [
+          Text('$label  ',
+              style: const TextStyle(
+                  color: AppColors.muted, fontSize: 13)),
+          Text(value,
+              style: TextStyle(
+                  color: valueColor,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600)),
+        ],
+      );
+
+  Future<void> _openMap(double lat, double lng) async {
+    final kakaoUri = Uri.parse('kakaomap://look?p=$lat,$lng');
+    final googleUri = Uri.parse('https://maps.google.com/?q=$lat,$lng');
+    if (await canLaunchUrl(kakaoUri)) {
+      await launchUrl(kakaoUri);
+    } else {
+      await launchUrl(googleUri, mode: LaunchMode.externalApplication);
+    }
   }
 }
 
