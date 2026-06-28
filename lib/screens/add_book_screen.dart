@@ -10,6 +10,7 @@ import '../providers/cover_upload_provider.dart';
 import '../providers/providers.dart';
 import '../repositories/book_repository.dart';
 import '../services/cover_photo_service.dart';
+import '../services/library_search_service.dart';
 import '../theme/app_theme.dart';
 
 class AddBookScreen extends ConsumerStatefulWidget {
@@ -45,6 +46,10 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
   late final TextEditingController _genre;
   late final TextEditingController _location;
   late final TextEditingController _callNumber;
+  late final TextEditingController _kdcCtrl;
+  late final TextEditingController _ddcCtrl;
+  late final TextEditingController _lcCtrl;
+  bool _classExpanded = false;
   late final TextEditingController _review;
 
   late String _status;
@@ -72,7 +77,15 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
     _genre      = TextEditingController(text: b?.genre     ?? s?.genre     ?? '');
     _location   = TextEditingController(text: b?.location  ?? '');
     _callNumber = TextEditingController(text: b?.callNumber ?? '');
+    _kdcCtrl    = TextEditingController(text: b?.kdc ?? '');
+    _ddcCtrl    = TextEditingController(text: b?.ddc ?? '');
+    _lcCtrl     = TextEditingController(text: b?.lc  ?? '');
     _review     = TextEditingController(text: b?.review    ?? '');
+
+    if (_kdcCtrl.text.isEmpty) {
+      final isbn = s?.isbn13 ?? s?.isbn10 ?? b?.isbn;
+      if (isbn != null && isbn.isNotEmpty) _fetchKdcInBackground(isbn);
+    }
     _status     = widget.initialStatus ?? b?.status ?? 'owned';
     _isRead     = b?.isRead ?? false;
     _medium     = b?.medium ?? 'paper';
@@ -100,6 +113,9 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
     _genre.dispose();
     _location.dispose();
     _callNumber.dispose();
+    _kdcCtrl.dispose();
+    _ddcCtrl.dispose();
+    _lcCtrl.dispose();
     _review.dispose();
     _locationFocusNode.dispose();
     super.dispose();
@@ -129,6 +145,15 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
       _            => '',
     };
     return v.isEmpty ? null : v;
+  }
+
+  Future<void> _fetchKdcInBackground(String isbn) async {
+    try {
+      final classNo = await LibrarySearchService().getClassNo(isbn);
+      if (classNo != null && classNo.isNotEmpty && mounted) {
+        setState(() => _kdcCtrl.text = classNo);
+      }
+    } catch (_) {}
   }
 
   Future<void> _save() async {
@@ -178,6 +203,9 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
           medium:     _medium,
           language:   base.language,
           callNumber: _callNumber.text.trim().isEmpty ? null : _callNumber.text.trim(),
+          kdc: _kdcCtrl.text.trim().isEmpty ? null : _kdcCtrl.text.trim(),
+          ddc: _ddcCtrl.text.trim().isEmpty ? null : _ddcCtrl.text.trim(),
+          lc:  _lcCtrl.text.trim().isEmpty  ? null : _lcCtrl.text.trim(),
           acquiredAt: _acquiredAt,
           createdAt:  base.createdAt,
           updatedAt:  base.updatedAt,
@@ -198,6 +226,9 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
           genre:      _nonEmpty('genre'),
           location:   _nonEmpty('location'),
           callNumber: _nonEmpty('callNumber'),
+          kdc: _kdcCtrl.text.trim().isEmpty ? null : _kdcCtrl.text.trim(),
+          ddc: _ddcCtrl.text.trim().isEmpty ? null : _ddcCtrl.text.trim(),
+          lc:  _lcCtrl.text.trim().isEmpty  ? null : _lcCtrl.text.trim(),
           review:     _nonEmpty('review'),
           status:     _status,
           isRead:     _isRead,
@@ -398,6 +429,33 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
                 ),
                 _Field(controller: _callNumber, label: '청구기호',
                     hint: '예) 813.6-한강-채'),
+                _Field(controller: _kdcCtrl, label: 'KDC (한국십진분류기호)',
+                    hint: '예) 813.6'),
+                GestureDetector(
+                  onTap: () => setState(() => _classExpanded = !_classExpanded),
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Row(
+                      children: [
+                        Text(
+                          'DDC / LC (선택)',
+                          style: const TextStyle(color: AppColors.muted, fontSize: 13),
+                        ),
+                        Icon(
+                          _classExpanded ? Icons.expand_less : Icons.expand_more,
+                          color: AppColors.muted,
+                          size: 18,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                if (_classExpanded) ...[
+                  _Field(controller: _ddcCtrl, label: 'DDC (듀이십진분류법)',
+                      hint: '예) 895.73'),
+                  _Field(controller: _lcCtrl, label: 'LC (미국의회도서관분류법)',
+                      hint: '예) PL992.17'),
+                ],
                 _DatePickerField(
                   label: '책 만난 날 (선택 사항)',
                   value: _acquiredAt,

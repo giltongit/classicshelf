@@ -220,6 +220,9 @@ class _BookDetailBody extends StatelessWidget {
       ('책 만난 날', acquiredStr),
       ('책장 위치', b.location),
       ('청구기호', b.callNumber),
+      ('KDC',    b.kdc),
+      ('DDC',    b.ddc),
+      ('LC',     b.lc),
       ('ISBN',   b.isbn),
       ('매체',   b.medium == 'paper' ? '종이책'
                : b.medium == 'ebook' ? '전자책'

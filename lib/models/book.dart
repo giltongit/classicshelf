@@ -27,6 +27,9 @@ class Book {
   final String medium;
   final String? language;
   final String? callNumber;
+  final String? kdc;
+  final String? ddc;
+  final String? lc;
   final DateTime? acquiredAt;
   final DateTime? createdAt;
   final DateTime? updatedAt;
@@ -52,6 +55,9 @@ class Book {
     this.medium = 'paper',
     this.language,
     this.callNumber,
+    this.kdc,
+    this.ddc,
+    this.lc,
     this.acquiredAt,
     this.createdAt,
     this.updatedAt,
@@ -81,6 +87,9 @@ class Book {
     String? medium,
     String? language,
     String? callNumber,
+    String? kdc,
+    String? ddc,
+    String? lc,
     Object? acquiredAt = _absent,
     DateTime? createdAt,
     DateTime? updatedAt,
@@ -106,6 +115,9 @@ class Book {
         medium: medium ?? this.medium,
         language: language ?? this.language,
         callNumber: callNumber ?? this.callNumber,
+        kdc: kdc ?? this.kdc,
+        ddc: ddc ?? this.ddc,
+        lc: lc ?? this.lc,
         acquiredAt: acquiredAt == _absent ? this.acquiredAt : acquiredAt as DateTime?,
         createdAt: createdAt ?? this.createdAt,
         updatedAt: updatedAt ?? this.updatedAt,
@@ -133,6 +145,9 @@ class Book {
         'medium': medium,
         if (language != null) 'language': language,
         if (callNumber != null) 'call_number': callNumber,
+        if (kdc != null) 'kdc': kdc,
+        if (ddc != null) 'ddc': ddc,
+        if (lc  != null) 'lc':  lc,
         if (acquiredAt != null) 'acquired_at': _formatDate(acquiredAt!),
       };
 
@@ -155,6 +170,9 @@ class Book {
         'medium': medium,
         'language': language,
         'call_number': callNumber,
+        'kdc': kdc,
+        'ddc': ddc,
+        'lc':  lc,
         'acquired_at': acquiredAt != null ? _formatDate(acquiredAt!) : null,
         'updated_at': DateTime.now().toUtc().toIso8601String(),
       };
@@ -181,6 +199,9 @@ class Book {
         medium: (json['medium'] as String?) ?? 'paper',
         language: json['language'] as String?,
         callNumber: json['call_number'] as String?,
+        kdc: json['kdc'] as String?,
+        ddc: json['ddc'] as String?,
+        lc:  json['lc']  as String?,
         acquiredAt: _parseDateTime(json['acquired_at']),
         createdAt: _parseDateTime(json['created_at']),
         updatedAt: _parseDateTime(json['updated_at']),

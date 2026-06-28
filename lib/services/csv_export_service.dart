@@ -20,6 +20,7 @@ class CsvExportService {
       [
         'title', 'author', 'isbn', 'status', 'medium', 'is_read',
         'publisher', 'year', 'genre', 'location', 'call_number',
+        'kdc', 'ddc', 'lc',
         'review', 'page_count', 'cover_url', 'created_at', 'updated_at',
       ],
     ];
@@ -38,6 +39,9 @@ class CsvExportService {
         b.genre ?? '',
         b.location ?? '',
         b.callNumber ?? '',
+        b.kdc ?? '',
+        b.ddc ?? '',
+        b.lc  ?? '',
         b.review ?? '',
         b.pageCount?.toString() ?? '',
         b.coverUrl ?? '',
