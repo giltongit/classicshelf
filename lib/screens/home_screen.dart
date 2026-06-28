@@ -115,18 +115,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
       todayBook = unreadOwned[Random(seed).nextInt(unreadOwned.length)];
     }
 
-    // N권 · D일째
-    String subtitleText = '${books.length}권';
-    if (books.isNotEmpty) {
-      final dates =
-          books.map((b) => b.createdAt).whereType<DateTime>().toList();
-      if (dates.isNotEmpty) {
-        final earliest = dates.reduce((a, b) => a.isBefore(b) ? a : b);
-        final days = DateTime.now().difference(earliest).inDays + 1;
-        subtitleText += ' · $days일째';
-      }
-    }
-
     // 가장 많이 만난 저자 (2권 이상)
     final authorCounts = <String, int>{};
     for (final b in books) {
@@ -140,8 +128,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     }
     topAuthor = best?.key;
 
-    final readCount = books.where((b) => b.isRead).length;
-    final unreadCount = books.length - readCount;
+    final unreadCount = books.where((b) => !b.isRead).length;
 
     return Scaffold(
       body: Stack(
@@ -175,14 +162,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildHeader(libraryName, subtitleText),
+                  _buildHeader(libraryName),
                   const SizedBox(height: 28),
                   if (todayBook != null) ...[
                     _TodayBookCard(book: todayBook),
                     const SizedBox(height: 16),
                   ],
                   _SummaryCard(
-                    readCount: readCount,
+                    totalCount: books.length,
                     unreadCount: unreadCount,
                     topAuthor: topAuthor,
                   ),
@@ -200,58 +187,90 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     );
   }
 
-  Widget _buildHeader(String? libraryName, String subtitleText) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Expanded(
-              child: libraryName != null
-                  ? Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          '나의 도서관',
-                          style: TextStyle(
-                              color: Color(0xFFAA9F8F), fontSize: 12),
-                        ),
-                        Text(
-                          libraryName,
-                          style: const TextStyle(
-                            color: AppColors.cream,
-                            fontSize: 22,
-                            fontWeight: FontWeight.bold,
+  Widget _buildHeader(String? libraryName) {
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Color(0xCC000000),
+            Colors.transparent,
+          ],
+          stops: [0.0, 1.0],
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(
+                child: libraryName != null
+                    ? Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            '나의 도서관',
+                            style: TextStyle(
+                              color: Color(0xFFAA9F8F),
+                              fontSize: 12,
+                              shadows: [
+                                Shadow(
+                                  color: Colors.black54,
+                                  blurRadius: 8,
+                                  offset: Offset(0, 1),
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
-                      ],
-                    )
-                  : const Text(
-                      '나의 도서관',
-                      style: TextStyle(
+                          Text(
+                            libraryName,
+                            style: const TextStyle(
+                              color: AppColors.cream,
+                              fontSize: 22,
+                              fontWeight: FontWeight.bold,
+                              shadows: [
+                                Shadow(
+                                  color: Colors.black54,
+                                  blurRadius: 8,
+                                  offset: Offset(0, 1),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      )
+                    : const Text(
+                        '나의 도서관',
+                        style: TextStyle(
                           color: Color(0xFFAA9F8F),
                           fontSize: 15,
-                          fontWeight: FontWeight.w600),
-                    ),
-            ),
-            GestureDetector(
-              onTap: () => _startEditing(libraryName),
-              behavior: HitTestBehavior.opaque,
-              child: const Padding(
-                padding: EdgeInsets.all(8),
-                child: Icon(Icons.edit_outlined,
-                    size: 16, color: Color(0xFFAA9F8F)),
+                          fontWeight: FontWeight.w600,
+                          shadows: [
+                            Shadow(
+                              color: Colors.black54,
+                              blurRadius: 8,
+                              offset: Offset(0, 1),
+                            ),
+                          ],
+                        ),
+                      ),
               ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 4),
-        Text(
-          subtitleText,
-          style: const TextStyle(color: Color(0xFFAA9F8F), fontSize: 12),
-        ),
-      ],
+              GestureDetector(
+                onTap: () => _startEditing(libraryName),
+                behavior: HitTestBehavior.opaque,
+                child: const Padding(
+                  padding: EdgeInsets.all(8),
+                  child: Icon(Icons.edit_outlined,
+                      size: 16, color: Color(0xFFAA9F8F)),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }
@@ -285,7 +304,7 @@ class _TodayBookCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      '오늘의 책',
+                      '서가로부터의 추천',
                       style: TextStyle(
                           color: AppColors.gold,
                           fontSize: 11,
@@ -333,11 +352,11 @@ class _TodayBookCard extends StatelessWidget {
 // ── 요약 카드 ──────────────────────────────────────────────────────────────────
 
 class _SummaryCard extends StatelessWidget {
-  final int readCount;
+  final int totalCount;
   final int unreadCount;
   final String? topAuthor;
   const _SummaryCard({
-    required this.readCount,
+    required this.totalCount,
     required this.unreadCount,
     this.topAuthor,
   });
@@ -357,41 +376,17 @@ class _SummaryCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      '읽음',
-                      style: TextStyle(
-                          color: Color(0xFFAA9F8F), fontSize: 11),
-                    ),
-                    Text(
-                      '$readCount권',
-                      style: const TextStyle(
-                          color: AppColors.cream,
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold),
-                    ),
-                  ],
+                Text(
+                  '전체 $totalCount권',
+                  style: const TextStyle(
+                      color: AppColors.cream, fontSize: 15),
                 ),
-                const Spacer(),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    const Text(
-                      '미독',
-                      style: TextStyle(
-                          color: Color(0xFFAA9F8F), fontSize: 11),
-                    ),
-                    Text(
-                      '$unreadCount권',
-                      style: const TextStyle(
-                          color: AppColors.cream,
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold),
-                    ),
-                  ],
+                Text(
+                  '미독 $unreadCount권',
+                  style: const TextStyle(
+                      color: AppColors.gold, fontSize: 15),
                 ),
               ],
             ),
@@ -473,7 +468,7 @@ class _WishlistCard extends StatelessWidget {
                         ),
                         const SizedBox(height: 6),
                         Text(
-                          '$waitDays일째 기다리는 중',
+                          '$waitDays일째...',
                           style: const TextStyle(
                               color: Color(0xFFAA9F8F), fontSize: 11),
                         ),
