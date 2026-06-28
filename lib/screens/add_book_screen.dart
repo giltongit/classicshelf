@@ -436,6 +436,7 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
                   child: Padding(
                     padding: const EdgeInsets.only(bottom: 8),
                     child: Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
                       children: [
                         Text(
                           'DDC / LC (선택)',
