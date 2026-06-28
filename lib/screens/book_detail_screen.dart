@@ -89,16 +89,37 @@ class _BookDetailBody extends StatelessWidget {
               ),
             ),
             actions: [
-              IconButton(
-                icon: const Icon(Icons.edit_outlined),
-                tooltip: '수정',
-                onPressed: () => context.push('/add', extra: book),
+              Container(
+                margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.35),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: IconButton(
+                  icon: const Icon(Icons.edit_outlined),
+                  tooltip: '수정',
+                  onPressed: () => context.push('/add', extra: book),
+                  padding: const EdgeInsets.all(6),
+                  constraints: const BoxConstraints(),
+                  iconSize: 22,
+                ),
               ),
-              IconButton(
-                icon: const Icon(Icons.delete_outline, color: AppColors.red),
-                tooltip: '삭제',
-                onPressed: () => _confirmDelete(context),
+              Container(
+                margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.35),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: IconButton(
+                  icon: const Icon(Icons.delete_outline, color: AppColors.red),
+                  tooltip: '삭제',
+                  onPressed: () => _confirmDelete(context),
+                  padding: const EdgeInsets.all(6),
+                  constraints: const BoxConstraints(),
+                  iconSize: 22,
+                ),
               ),
+              const SizedBox(width: 4),
             ],
           ),
           SliverPadding(
