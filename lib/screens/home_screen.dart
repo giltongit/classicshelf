@@ -303,9 +303,11 @@ class _TodayBookCard extends StatelessWidget {
                           color: Color(0xFFAA9F8F), fontSize: 12),
                     ),
                     const SizedBox(height: 8),
-                    const Text(
-                      '오늘 이 책은 어떤가요?',
-                      style: TextStyle(
+                    Text(
+                      book.location?.isNotEmpty == true
+                          ? '오늘 이 책은 어떤가요? · ${book.location}'
+                          : '오늘 이 책은 어떤가요?',
+                      style: const TextStyle(
                           color: Color(0xFFAA9F8F), fontSize: 11),
                     ),
                   ],
@@ -346,12 +348,21 @@ class _SummaryCard extends StatelessWidget {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(
-              '전체 $totalCount권',
-              style: const TextStyle(
-                  color: AppColors.cream,
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold),
+            Text.rich(
+              TextSpan(
+                style: const TextStyle(
+                    color: AppColors.cream,
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold),
+                children: [
+                  const TextSpan(text: '전체 '),
+                  TextSpan(
+                    text: '$totalCount',
+                    style: const TextStyle(color: Color(0xFFD4784A)),
+                  ),
+                  const TextSpan(text: '권'),
+                ],
+              ),
             ),
             Text(
               '미독 $unreadCount권',
