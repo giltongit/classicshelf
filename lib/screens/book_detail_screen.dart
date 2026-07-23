@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 import '../models/book.dart';
 import '../providers/providers.dart';
 import '../theme/app_theme.dart';
+import '../utils/kdc_genre.dart';
 
 class BookDetailScreen extends ConsumerWidget {
   final int localId;
@@ -243,7 +244,8 @@ class _BookDetailBody extends StatelessWidget {
                : b.medium == 'ebook' ? '전자책'
                : b.medium == 'audio' ? '오디오북'
                : b.medium),
-      ('장르',    b.genre),
+      ('장르',    kdcToGenre(b.kdc)?.label),
+      ('태그',    b.genre),
       ('총 페이지', b.pageCount?.toString()),
     ];
     return pairs

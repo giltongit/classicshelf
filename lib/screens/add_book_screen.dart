@@ -415,7 +415,8 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
                 _Field(controller: _isbn,      label: 'ISBN',   keyboardType: TextInputType.number),
                 _Field(controller: _publisher, label: '출판사'),
                 _Field(controller: _year,      label: '출판연도', keyboardType: TextInputType.number),
-                _Field(controller: _genre,     label: '장르'),
+                _Field(controller: _genre,     label: '태그 (자유 입력)',
+                    hint: '예) 힐링, 인생책, 다시 읽고 싶은'),
                 _LocationField(
                   controller: _location,
                   focusNode: _locationFocusNode,
