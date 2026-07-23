@@ -491,6 +491,8 @@ class BookRepositoryImpl implements BookRepository {
       if (book.lc  != null) 'lc':  book.lc,
       if (book.acquiredAt != null)
         'acquired_at': '${book.acquiredAt!.year}-${book.acquiredAt!.month.toString().padLeft(2, '0')}-${book.acquiredAt!.day.toString().padLeft(2, '0')}',
+      if (book.disposedAt != null)
+        'disposed_at': book.disposedAt!.toUtc().toIso8601String(),
     });
   }
 
@@ -524,6 +526,7 @@ class BookRepositoryImpl implements BookRepository {
         acquiredAt: d.acquiredAt,
         createdAt: d.createdAt,
         updatedAt: d.updatedAt,
+        disposedAt: d.disposedAt,
       );
 
   BooksCompanion _toCompanion(Book b) => BooksCompanion(
@@ -554,5 +557,6 @@ class BookRepositoryImpl implements BookRepository {
             b.createdAt != null ? Value(b.createdAt!) : const Value.absent(),
         updatedAt:
             b.updatedAt != null ? Value(b.updatedAt!) : const Value.absent(),
+        disposedAt: Value(b.disposedAt),
       );
 }

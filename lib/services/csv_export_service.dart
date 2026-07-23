@@ -22,6 +22,7 @@ class CsvExportService {
         'publisher', 'year', 'genre', 'location', 'call_number',
         'kdc', 'ddc', 'lc',
         'review', 'page_count', 'cover_url', 'created_at', 'updated_at',
+        'disposed_at',
       ],
     ];
 
@@ -47,6 +48,7 @@ class CsvExportService {
         b.coverUrl ?? '',
         b.createdAt?.toIso8601String() ?? '',
         b.updatedAt?.toIso8601String() ?? '',
+        b.disposedAt?.toIso8601String() ?? '',
       ]);
     }
 

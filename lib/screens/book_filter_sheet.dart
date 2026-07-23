@@ -136,6 +136,15 @@ class _BookFilterSheetState extends State<BookFilterSheet> {
                           () => _draft = _draft.copyWith(locations: v)),
                     ),
                   ],
+                  _SectionTitle('기타'),
+                  _MultiChips(
+                    items: const [
+                      _ChipItem('처분된 책 보기', 'show'),
+                    ],
+                    selected: _draft.showDisposed ? const {'show'} : const {},
+                    onChanged: (v) => setState(() =>
+                        _draft = _draft.copyWith(showDisposed: v.contains('show'))),
+                  ),
                   const SizedBox(height: 80),
                 ],
               ),

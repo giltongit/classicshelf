@@ -14,7 +14,7 @@ class Book {
   final String? coverUrl;
   final String? description;
 
-  /// 'owned' | 'wishlist'
+  /// 'owned' | 'wishlist' | 'rental'
   final String status;
   final String? review;
   final int? pageCount;
@@ -33,6 +33,20 @@ class Book {
   final DateTime? acquiredAt;
   final DateTime? createdAt;
   final DateTime? updatedAt;
+
+  /// 처분(판매/기부/분실 등) 시점. null이면 아직 소장 중.
+  /// status는 그대로 'owned'를 유지하고 이 필드만 orthogonal하게 처분 여부를 나타낸다
+  /// (결정: disposed 상태 A안 — 공통_아키텍처.md §25).
+  final DateTime? disposedAt;
+
+  /// 실제로 지금 서가에 있는 소장본인가 — status만으로는 판단 불가(처분된 책도
+  /// status는 'owned'로 남아있음). 소장 여부를 판정하는 모든 코드는 이 getter를
+  /// 사용해야 한다 (직접 `status == 'owned'`만 체크하면 처분된 책이 다시 보이는
+  /// 회귀가 생길 수 있음).
+  bool get isActiveOwned => status == 'owned' && disposedAt == null;
+
+  /// 처분된 책인가.
+  bool get isDisposed => disposedAt != null;
 
   const Book({
     this.localId,
@@ -61,9 +75,10 @@ class Book {
     this.acquiredAt,
     this.createdAt,
     this.updatedAt,
+    this.disposedAt,
   });
 
-  // acquiredAt은 null로 명시 설정(날짜 지우기)이 필요하므로 sentinel 패턴 사용.
+  // acquiredAt/disposedAt은 null로 명시 설정(날짜 지우기)이 필요하므로 sentinel 패턴 사용.
   static const _absent = Object();
 
   Book copyWith({
@@ -93,6 +108,7 @@ class Book {
     Object? acquiredAt = _absent,
     DateTime? createdAt,
     DateTime? updatedAt,
+    Object? disposedAt = _absent,
   }) =>
       Book(
         localId: localId ?? this.localId,
@@ -121,6 +137,7 @@ class Book {
         acquiredAt: acquiredAt == _absent ? this.acquiredAt : acquiredAt as DateTime?,
         createdAt: createdAt ?? this.createdAt,
         updatedAt: updatedAt ?? this.updatedAt,
+        disposedAt: disposedAt == _absent ? this.disposedAt : disposedAt as DateTime?,
       );
 
   // ── Supabase 직렬화 ──────────────────────────────────────────────────────
@@ -149,6 +166,7 @@ class Book {
         if (ddc != null) 'ddc': ddc,
         if (lc  != null) 'lc':  lc,
         if (acquiredAt != null) 'acquired_at': _formatDate(acquiredAt!),
+        if (disposedAt != null) 'disposed_at': disposedAt!.toUtc().toIso8601String(),
       };
 
   /// Supabase UPDATE 페이로드. updated_at을 수동 갱신(트리거 없음).
@@ -174,6 +192,7 @@ class Book {
         'ddc': ddc,
         'lc':  lc,
         'acquired_at': acquiredAt != null ? _formatDate(acquiredAt!) : null,
+        'disposed_at': disposedAt?.toUtc().toIso8601String(),
         'updated_at': DateTime.now().toUtc().toIso8601String(),
       };
 
@@ -205,6 +224,7 @@ class Book {
         acquiredAt: _parseDateTime(json['acquired_at']),
         createdAt: _parseDateTime(json['created_at']),
         updatedAt: _parseDateTime(json['updated_at']),
+        disposedAt: _parseDateTime(json['disposed_at']),
       );
 
   static DateTime? _parseDateTime(dynamic value) {

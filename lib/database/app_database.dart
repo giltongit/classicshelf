@@ -38,6 +38,10 @@ class Books extends Table {
       dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get updatedAt =>
       dateTime().withDefault(currentDateAndTime)();
+  /// 처분(판매/기부/분실 등) 시점. null이면 아직 소장 중.
+  /// status는 'owned'로 그대로 유지되고, 이 필드만 orthogonal하게 처분 이력을 표시한다
+  /// (결정: disposed 상태 A안 — §25).
+  DateTimeColumn get disposedAt => dateTime().nullable()();
 }
 
 /// 오프라인 동기화 큐. operation: 'insert' | 'update' | 'delete'.
@@ -57,7 +61,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
   @override
-  int get schemaVersion => 6;
+  int get schemaVersion => 7;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -81,6 +85,9 @@ class AppDatabase extends _$AppDatabase {
             await m.addColumn(books, books.kdc);
             await m.addColumn(books, books.ddc);
             await m.addColumn(books, books.lc);
+          }
+          if (from < 7) {
+            await m.addColumn(books, books.disposedAt);
           }
         },
       );

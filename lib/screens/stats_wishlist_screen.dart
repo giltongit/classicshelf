@@ -22,8 +22,9 @@ class StatsWishlistScreen extends ConsumerWidget {
               style: const TextStyle(color: AppColors.red)),
         ),
         data: (books) {
-          final wishlist =
-              books.where((b) => b.status == 'wishlist').toList();
+          final wishlist = books
+              .where((b) => b.status == 'wishlist' && !b.isDisposed)
+              .toList();
           if (wishlist.isEmpty) {
             return const Center(
               child: Column(

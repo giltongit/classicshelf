@@ -24,7 +24,7 @@ class StatsMonthlyScreen extends ConsumerWidget {
           child: Text('불러오기 실패: $e',
               style: const TextStyle(color: AppColors.red)),
         ),
-        data: (books) => trackingAsync.when(
+        data: (rawBooks) => trackingAsync.when(
           loading: () => const Center(
               child: CircularProgressIndicator(color: AppColors.gold)),
           error: (e, _) => Center(
@@ -32,6 +32,7 @@ class StatsMonthlyScreen extends ConsumerWidget {
                 style: const TextStyle(color: AppColors.red)),
           ),
           data: (trackingDate) {
+            final books = rawBooks.where((b) => !b.isDisposed).toList();
             if (trackingDate == null) {
               return Padding(
                 padding: const EdgeInsets.all(24),

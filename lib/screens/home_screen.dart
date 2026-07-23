@@ -104,10 +104,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
       _ => null,
     };
 
-    _tryPickWishlist(books);
+    // 처분된 책은 홈 화면 전체에서 제외 (결정: disposed 상태 §25)
+    final activeBooks = books.where((b) => !b.isDisposed).toList();
+
+    _tryPickWishlist(activeBooks);
 
     // 오늘의 책: 희망 도서 중 날짜 기반 랜덤
-    final wishlistBooks = books.where((b) => b.status == 'wishlist').toList();
+    final wishlistBooks =
+        activeBooks.where((b) => b.status == 'wishlist').toList();
     Book? todayBook;
     if (wishlistBooks.isNotEmpty) {
       final now = DateTime.now();
@@ -115,7 +119,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
       todayBook = wishlistBooks[Random(seed).nextInt(wishlistBooks.length)];
     }
 
-    final unreadCount = books.where((b) => !b.isRead).length;
+    final unreadCount = activeBooks.where((b) => !b.isRead).length;
 
     return Scaffold(
       body: Stack(
@@ -156,7 +160,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                     const SizedBox(height: 16),
                   ],
                   _SummaryCard(
-                    totalCount: books.length,
+                    totalCount: activeBooks.length,
                     unreadCount: unreadCount,
                   ),
                   if (_wishlistBook != null) ...[

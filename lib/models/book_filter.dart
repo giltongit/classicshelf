@@ -7,6 +7,10 @@ class BookFilter {
   final String sortBy;
   final String searchQuery;
 
+  /// 처분된 책도 목록에 포함할지. 기본 false — 처분된 책은 서가·검색·통계에서
+  /// 기본적으로 숨겨지고, 이 필터를 켰을 때만 노출된다 (결정: disposed 상태 §25).
+  final bool showDisposed;
+
   const BookFilter({
     this.statuses = const {},
     this.attributes = const {},
@@ -15,6 +19,7 @@ class BookFilter {
     this.locations = const {},
     this.sortBy = 'createdAt',
     this.searchQuery = '',
+    this.showDisposed = false,
   });
 
   static const _absent = Object();
@@ -27,6 +32,7 @@ class BookFilter {
     Set<String>? locations,
     String? sortBy,
     String? searchQuery,
+    bool? showDisposed,
   }) =>
       BookFilter(
         statuses: statuses ?? this.statuses,
@@ -36,6 +42,7 @@ class BookFilter {
         locations: locations ?? this.locations,
         sortBy: sortBy ?? this.sortBy,
         searchQuery: searchQuery ?? this.searchQuery,
+        showDisposed: showDisposed ?? this.showDisposed,
       );
 
   bool get isEmpty =>
@@ -45,7 +52,8 @@ class BookFilter {
       initial == null &&
       locations.isEmpty &&
       sortBy == 'createdAt' &&
-      searchQuery.isEmpty;
+      searchQuery.isEmpty &&
+      !showDisposed;
 
   // 뱃지 카운트: 정렬 기준·검색어는 카운트 제외
   int get activeCount =>
@@ -53,5 +61,6 @@ class BookFilter {
       attributes.length +
       media.length +
       (initial != null ? 1 : 0) +
-      locations.length;
+      locations.length +
+      (showDisposed ? 1 : 0);
 }

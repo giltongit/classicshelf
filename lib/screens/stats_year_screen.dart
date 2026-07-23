@@ -24,7 +24,9 @@ class StatsYearScreen extends ConsumerWidget {
           child: Text('불러오기 실패: $e',
               style: const TextStyle(color: AppColors.red)),
         ),
-        data: (books) => _YearBody(books: books),
+        data: (books) => _YearBody(
+              books: books.where((b) => !b.isDisposed).toList(),
+            ),
       ),
     );
   }

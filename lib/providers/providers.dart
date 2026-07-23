@@ -115,29 +115,37 @@ List<Book> applyBookFilterAndSort(List<Book> books, BookFilter filter) {
     ).toList();
   }
 
-  final filtered = result.where((b) {
-    if (filter.statuses.isNotEmpty && !filter.statuses.contains(b.status)) {
-      return false;
-    }
-    if (filter.attributes.isNotEmpty) {
-      final match =
-          (filter.attributes.contains('priority') && b.priorityRead) ||
-          (filter.attributes.contains('read') && b.isRead) ||
-          (filter.attributes.contains('unread') && !b.isRead);
-      if (!match) return false;
-    }
-    if (filter.media.isNotEmpty && !filter.media.contains(b.medium)) {
-      return false;
-    }
-    if (filter.initial != null && bookGroupKey(b.title) != filter.initial) {
-      return false;
-    }
-    if (filter.locations.isNotEmpty &&
-        !filter.locations.contains(b.location)) {
-      return false;
-    }
-    return true;
-  }).toList();
+  // 처분된 책 보기: 처분 이력 전용 뷰 — 다른 상태/속성/매체/위치 필터는 적용하지
+  // 않고 처분된 책만 배타적으로 보여준다 (결정: disposed 상태 §25 후속 확정).
+  final List<Book> filtered;
+  if (filter.showDisposed) {
+    filtered = result.where((b) => b.isDisposed).toList();
+  } else {
+    filtered = result.where((b) {
+      if (b.isDisposed) return false;
+      if (filter.statuses.isNotEmpty && !filter.statuses.contains(b.status)) {
+        return false;
+      }
+      if (filter.attributes.isNotEmpty) {
+        final match =
+            (filter.attributes.contains('priority') && b.priorityRead) ||
+            (filter.attributes.contains('read') && b.isRead) ||
+            (filter.attributes.contains('unread') && !b.isRead);
+        if (!match) return false;
+      }
+      if (filter.media.isNotEmpty && !filter.media.contains(b.medium)) {
+        return false;
+      }
+      if (filter.initial != null && bookGroupKey(b.title) != filter.initial) {
+        return false;
+      }
+      if (filter.locations.isNotEmpty &&
+          !filter.locations.contains(b.location)) {
+        return false;
+      }
+      return true;
+    }).toList();
+  }
 
   switch (filter.sortBy) {
     case 'title':
@@ -171,6 +179,8 @@ class BookFilterNotifier extends Notifier<BookFilter> {
   void update(BookFilter f) => state = f;
   void setSearchQuery(String q) =>
       state = state.copyWith(searchQuery: q);
+  void setShowDisposed(bool v) =>
+      state = state.copyWith(showDisposed: v);
 }
 
 final bookFilterProvider =

@@ -283,6 +283,17 @@ class $BooksTable extends Books with TableInfo<$BooksTable, BookData> {
     requiredDuringInsert: false,
     defaultValue: currentDateAndTime,
   );
+  static const VerificationMeta _disposedAtMeta = const VerificationMeta(
+    'disposedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> disposedAt = GeneratedColumn<DateTime>(
+    'disposed_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -311,6 +322,7 @@ class $BooksTable extends Books with TableInfo<$BooksTable, BookData> {
     acquiredAt,
     createdAt,
     updatedAt,
+    disposedAt,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -486,6 +498,12 @@ class $BooksTable extends Books with TableInfo<$BooksTable, BookData> {
         updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
       );
     }
+    if (data.containsKey('disposed_at')) {
+      context.handle(
+        _disposedAtMeta,
+        disposedAt.isAcceptableOrUnknown(data['disposed_at']!, _disposedAtMeta),
+      );
+    }
     return context;
   }
 
@@ -599,6 +617,10 @@ class $BooksTable extends Books with TableInfo<$BooksTable, BookData> {
         DriftSqlType.dateTime,
         data['${effectivePrefix}updated_at'],
       )!,
+      disposedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}disposed_at'],
+      ),
     );
   }
 
@@ -635,6 +657,11 @@ class BookData extends DataClass implements Insertable<BookData> {
   final DateTime? acquiredAt;
   final DateTime createdAt;
   final DateTime updatedAt;
+
+  /// 처분(판매/기부/분실 등) 시점. null이면 아직 소장 중.
+  /// status는 'owned'로 그대로 유지되고, 이 필드만 orthogonal하게 처분 이력을 표시한다
+  /// (결정: disposed 상태 A안 — §25).
+  final DateTime? disposedAt;
   const BookData({
     required this.id,
     this.supabaseId,
@@ -662,6 +689,7 @@ class BookData extends DataClass implements Insertable<BookData> {
     this.acquiredAt,
     required this.createdAt,
     required this.updatedAt,
+    this.disposedAt,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -724,6 +752,9 @@ class BookData extends DataClass implements Insertable<BookData> {
     }
     map['created_at'] = Variable<DateTime>(createdAt);
     map['updated_at'] = Variable<DateTime>(updatedAt);
+    if (!nullToAbsent || disposedAt != null) {
+      map['disposed_at'] = Variable<DateTime>(disposedAt);
+    }
     return map;
   }
 
@@ -777,6 +808,9 @@ class BookData extends DataClass implements Insertable<BookData> {
           : Value(acquiredAt),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
+      disposedAt: disposedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(disposedAt),
     );
   }
 
@@ -812,6 +846,7 @@ class BookData extends DataClass implements Insertable<BookData> {
       acquiredAt: serializer.fromJson<DateTime?>(json['acquiredAt']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+      disposedAt: serializer.fromJson<DateTime?>(json['disposedAt']),
     );
   }
   @override
@@ -844,6 +879,7 @@ class BookData extends DataClass implements Insertable<BookData> {
       'acquiredAt': serializer.toJson<DateTime?>(acquiredAt),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
+      'disposedAt': serializer.toJson<DateTime?>(disposedAt),
     };
   }
 
@@ -874,6 +910,7 @@ class BookData extends DataClass implements Insertable<BookData> {
     Value<DateTime?> acquiredAt = const Value.absent(),
     DateTime? createdAt,
     DateTime? updatedAt,
+    Value<DateTime?> disposedAt = const Value.absent(),
   }) => BookData(
     id: id ?? this.id,
     supabaseId: supabaseId.present ? supabaseId.value : this.supabaseId,
@@ -901,6 +938,7 @@ class BookData extends DataClass implements Insertable<BookData> {
     acquiredAt: acquiredAt.present ? acquiredAt.value : this.acquiredAt,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
+    disposedAt: disposedAt.present ? disposedAt.value : this.disposedAt,
   );
   BookData copyWithCompanion(BooksCompanion data) {
     return BookData(
@@ -940,6 +978,9 @@ class BookData extends DataClass implements Insertable<BookData> {
           : this.acquiredAt,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      disposedAt: data.disposedAt.present
+          ? data.disposedAt.value
+          : this.disposedAt,
     );
   }
 
@@ -971,7 +1012,8 @@ class BookData extends DataClass implements Insertable<BookData> {
           ..write('lc: $lc, ')
           ..write('acquiredAt: $acquiredAt, ')
           ..write('createdAt: $createdAt, ')
-          ..write('updatedAt: $updatedAt')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('disposedAt: $disposedAt')
           ..write(')'))
         .toString();
   }
@@ -1004,6 +1046,7 @@ class BookData extends DataClass implements Insertable<BookData> {
     acquiredAt,
     createdAt,
     updatedAt,
+    disposedAt,
   ]);
   @override
   bool operator ==(Object other) =>
@@ -1034,7 +1077,8 @@ class BookData extends DataClass implements Insertable<BookData> {
           other.lc == this.lc &&
           other.acquiredAt == this.acquiredAt &&
           other.createdAt == this.createdAt &&
-          other.updatedAt == this.updatedAt);
+          other.updatedAt == this.updatedAt &&
+          other.disposedAt == this.disposedAt);
 }
 
 class BooksCompanion extends UpdateCompanion<BookData> {
@@ -1064,6 +1108,7 @@ class BooksCompanion extends UpdateCompanion<BookData> {
   final Value<DateTime?> acquiredAt;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
+  final Value<DateTime?> disposedAt;
   const BooksCompanion({
     this.id = const Value.absent(),
     this.supabaseId = const Value.absent(),
@@ -1091,6 +1136,7 @@ class BooksCompanion extends UpdateCompanion<BookData> {
     this.acquiredAt = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
+    this.disposedAt = const Value.absent(),
   });
   BooksCompanion.insert({
     this.id = const Value.absent(),
@@ -1119,6 +1165,7 @@ class BooksCompanion extends UpdateCompanion<BookData> {
     this.acquiredAt = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
+    this.disposedAt = const Value.absent(),
   }) : userId = Value(userId),
        title = Value(title),
        author = Value(author);
@@ -1149,6 +1196,7 @@ class BooksCompanion extends UpdateCompanion<BookData> {
     Expression<DateTime>? acquiredAt,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
+    Expression<DateTime>? disposedAt,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -1177,6 +1225,7 @@ class BooksCompanion extends UpdateCompanion<BookData> {
       if (acquiredAt != null) 'acquired_at': acquiredAt,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
+      if (disposedAt != null) 'disposed_at': disposedAt,
     });
   }
 
@@ -1207,6 +1256,7 @@ class BooksCompanion extends UpdateCompanion<BookData> {
     Value<DateTime?>? acquiredAt,
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
+    Value<DateTime?>? disposedAt,
   }) {
     return BooksCompanion(
       id: id ?? this.id,
@@ -1235,6 +1285,7 @@ class BooksCompanion extends UpdateCompanion<BookData> {
       acquiredAt: acquiredAt ?? this.acquiredAt,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      disposedAt: disposedAt ?? this.disposedAt,
     );
   }
 
@@ -1319,6 +1370,9 @@ class BooksCompanion extends UpdateCompanion<BookData> {
     if (updatedAt.present) {
       map['updated_at'] = Variable<DateTime>(updatedAt.value);
     }
+    if (disposedAt.present) {
+      map['disposed_at'] = Variable<DateTime>(disposedAt.value);
+    }
     return map;
   }
 
@@ -1350,7 +1404,8 @@ class BooksCompanion extends UpdateCompanion<BookData> {
           ..write('lc: $lc, ')
           ..write('acquiredAt: $acquiredAt, ')
           ..write('createdAt: $createdAt, ')
-          ..write('updatedAt: $updatedAt')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('disposedAt: $disposedAt')
           ..write(')'))
         .toString();
   }
@@ -1752,6 +1807,7 @@ typedef $$BooksTableCreateCompanionBuilder =
       Value<DateTime?> acquiredAt,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
+      Value<DateTime?> disposedAt,
     });
 typedef $$BooksTableUpdateCompanionBuilder =
     BooksCompanion Function({
@@ -1781,6 +1837,7 @@ typedef $$BooksTableUpdateCompanionBuilder =
       Value<DateTime?> acquiredAt,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
+      Value<DateTime?> disposedAt,
     });
 
 class $$BooksTableFilterComposer extends Composer<_$AppDatabase, $BooksTable> {
@@ -1918,6 +1975,11 @@ class $$BooksTableFilterComposer extends Composer<_$AppDatabase, $BooksTable> {
 
   ColumnFilters<DateTime> get updatedAt => $composableBuilder(
     column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get disposedAt => $composableBuilder(
+    column: $table.disposedAt,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -2060,6 +2122,11 @@ class $$BooksTableOrderingComposer
     column: $table.updatedAt,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<DateTime> get disposedAt => $composableBuilder(
+    column: $table.disposedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$BooksTableAnnotationComposer
@@ -2158,6 +2225,11 @@ class $$BooksTableAnnotationComposer
 
   GeneratedColumn<DateTime> get updatedAt =>
       $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get disposedAt => $composableBuilder(
+    column: $table.disposedAt,
+    builder: (column) => column,
+  );
 }
 
 class $$BooksTableTableManager
@@ -2214,6 +2286,7 @@ class $$BooksTableTableManager
                 Value<DateTime?> acquiredAt = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
+                Value<DateTime?> disposedAt = const Value.absent(),
               }) => BooksCompanion(
                 id: id,
                 supabaseId: supabaseId,
@@ -2241,6 +2314,7 @@ class $$BooksTableTableManager
                 acquiredAt: acquiredAt,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
+                disposedAt: disposedAt,
               ),
           createCompanionCallback:
               ({
@@ -2270,6 +2344,7 @@ class $$BooksTableTableManager
                 Value<DateTime?> acquiredAt = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
+                Value<DateTime?> disposedAt = const Value.absent(),
               }) => BooksCompanion.insert(
                 id: id,
                 supabaseId: supabaseId,
@@ -2297,6 +2372,7 @@ class $$BooksTableTableManager
                 acquiredAt: acquiredAt,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
+                disposedAt: disposedAt,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))

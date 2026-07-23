@@ -22,7 +22,9 @@ class StatsAuthorScreen extends ConsumerWidget {
           child: Text('불러오기 실패: $e',
               style: const TextStyle(color: AppColors.red)),
         ),
-        data: (books) => _AuthorBody(books: books),
+        data: (books) => _AuthorBody(
+              books: books.where((b) => !b.isDisposed).toList(),
+            ),
       ),
     );
   }

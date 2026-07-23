@@ -120,6 +120,26 @@ class _BookDetailBody extends StatelessWidget {
                   iconSize: 22,
                 ),
               ),
+              if (book.isActiveOwned || book.isDisposed)
+                Container(
+                  margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.35),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: IconButton(
+                    icon: Icon(book.isDisposed
+                        ? Icons.replay
+                        : Icons.inventory_2_outlined),
+                    tooltip: book.isDisposed ? '처분 취소' : '처분하기',
+                    onPressed: () => book.isDisposed
+                        ? _undispose(context, ref, book)
+                        : _confirmDispose(context, ref, book),
+                    padding: const EdgeInsets.all(6),
+                    constraints: const BoxConstraints(),
+                    iconSize: 22,
+                  ),
+                ),
               Container(
                 margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
                 decoration: BoxDecoration(
@@ -149,6 +169,23 @@ class _BookDetailBody extends StatelessWidget {
                 const SizedBox(height: 16),
 
                 _StatusToggleRow(book: book, ref: ref),
+
+                if (book.isDisposed)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.inventory_2_outlined,
+                            size: 14, color: AppColors.muted),
+                        const SizedBox(width: 4),
+                        Text(
+                          '처분됨 · ${book.disposedAt!.year}년 ${book.disposedAt!.month}월 ${book.disposedAt!.day}일',
+                          style: const TextStyle(
+                              color: AppColors.muted, fontSize: 12),
+                        ),
+                      ],
+                    ),
+                  ),
 
                 if (book.isRead)
                   Padding(
@@ -280,6 +317,48 @@ class _BookDetailBody extends StatelessWidget {
     ref.invalidate(booksProvider);
     if (context.mounted) context.pop();
   }
+
+  /// 처분(판매/기부/분실 등) 처리. status는 'owned'로 유지하고 disposedAt만
+  /// 기록한다 (결정: disposed 상태 A안 — §25). 행 삭제가 아니라 이력 보존.
+  Future<void> _confirmDispose(
+      BuildContext context, WidgetRef ref, Book book) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('책 처분'),
+        content: Text(
+          '"${book.title}"을(를) 처분 처리하시겠습니까?\n'
+          '서가 목록에서 기본적으로 숨겨지고, 필터에서 다시 볼 수 있습니다.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('취소'),
+          ),
+          TextButton(
+            style: TextButton.styleFrom(foregroundColor: AppColors.gold),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('처분'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+
+    await ref.read(bookRepositoryProvider).updateBook(
+          book.copyWith(disposedAt: DateTime.now()),
+        );
+    ref.invalidate(booksProvider);
+  }
+
+  /// 처분 취소(되돌리기). disposedAt만 지우면 원래 상태로 자동 복원된다.
+  Future<void> _undispose(
+      BuildContext context, WidgetRef ref, Book book) async {
+    await ref.read(bookRepositoryProvider).updateBook(
+          book.copyWith(disposedAt: null),
+        );
+    ref.invalidate(booksProvider);
+  }
 }
 
 class _StatusToggleRow extends StatelessWidget {
@@ -303,7 +382,9 @@ class _StatusToggleRow extends StatelessWidget {
             final newStatus = ['owned', 'wishlist', 'rental'][i];
             if (newStatus == book.status) return;
             await ref.read(bookRepositoryProvider).updateBook(
-              book.copyWith(status: newStatus),
+              // 상태를 수동으로 바꾸는 시점엔 처분 이력도 함께 해제한다 —
+              // 처분됨은 owned 책에만 의미가 있음 (결정: disposed 상태 §25)
+              book.copyWith(status: newStatus, disposedAt: null),
             );
             ref.invalidate(booksProvider);
           },

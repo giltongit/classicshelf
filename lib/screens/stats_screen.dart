@@ -25,7 +25,10 @@ class StatsScreen extends ConsumerWidget {
               style: const TextStyle(color: AppColors.red)),
         ),
         data: (books) => _StatsBody(
-          books: books,
+          // 처분된 책은 통계에서 제외하고 '처분 N권'으로 별도 표시
+          // (결정: disposed 상태 §25)
+          books: books.where((b) => !b.isDisposed).toList(),
+          disposedCount: books.where((b) => b.isDisposed).length,
           trackingAsync: trackingAsync,
         ),
       ),
@@ -37,9 +40,14 @@ class StatsScreen extends ConsumerWidget {
 
 class _StatsBody extends StatelessWidget {
   final List<Book> books;
+  final int disposedCount;
   final AsyncValue<DateTime?> trackingAsync;
 
-  const _StatsBody({required this.books, required this.trackingAsync});
+  const _StatsBody({
+    required this.books,
+    required this.disposedCount,
+    required this.trackingAsync,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -62,7 +70,7 @@ class _StatsBody extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
       children: [
-        _Section1AntiLibrary(books: books),
+        _Section1AntiLibrary(books: books, disposedCount: disposedCount),
         const SizedBox(height: 12),
         _Section2MediumLang(books: books),
         const SizedBox(height: 12),
@@ -167,7 +175,8 @@ class _StatsBody extends StatelessWidget {
 
 class _Section1AntiLibrary extends StatelessWidget {
   final List<Book> books;
-  const _Section1AntiLibrary({required this.books});
+  final int disposedCount;
+  const _Section1AntiLibrary({required this.books, required this.disposedCount});
 
   @override
   Widget build(BuildContext context) {
@@ -275,6 +284,13 @@ class _Section1AntiLibrary extends StatelessWidget {
                   fontSize: 13,
                   fontStyle: FontStyle.italic,
                   height: 1.5),
+            ),
+          ],
+          if (disposedCount > 0) ...[
+            const SizedBox(height: 8),
+            Text(
+              '처분한 책 $disposedCount권',
+              style: const TextStyle(color: AppColors.muted, fontSize: 11),
             ),
           ],
         ],
