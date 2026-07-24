@@ -25,8 +25,27 @@ class KdcGenre {
   /// 표시용 라벨. 예: "문학 · 한국문학" 또는 중분류 없으면 "문학"
   String get label => sub == null ? main : '$main · $sub';
 
+  /// 대분류 > 중분류 경로형 라벨. 예: "철학 > 심리학" (중분류 없으면 대분류만)
+  String get pathLabel => sub == null ? main : '$main > $sub';
+
   @override
   String toString() => label;
+}
+
+/// 대분류 10구분을 KDC 순서(0~9) 그대로 반환 — "지형도"는 지도이므로 항목
+/// 개수·인기순이 아니라 고정된 순서로 배치되어야 매번 같은 위치를 학습할 수 있다
+/// (장르 지형도 §10 후속 스펙).
+List<MapEntry<String, String>> get kdcMainClassesOrdered =>
+    _kdcMainClass.entries.toList();
+
+/// 특정 대분류(1자리, 예: '8') 안의 중분류를 KDC 코드 순서대로 반환.
+/// [미사용] 구간은 애초에 _kdcDivision에 없으므로 자동으로 빠진다.
+List<MapEntry<String, String>> kdcDivisionsOf(String mainDigit) {
+  final entries = _kdcDivision.entries
+      .where((e) => e.key.startsWith(mainDigit))
+      .toList()
+    ..sort((a, b) => a.key.compareTo(b.key));
+  return entries;
 }
 
 /// kdc 필드 값(예: '813.6', '813', '8')에서 [KdcGenre]를 파생한다.

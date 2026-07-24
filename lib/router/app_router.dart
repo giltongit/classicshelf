@@ -11,6 +11,7 @@ import '../screens/main_scaffold.dart';
 import '../screens/scan_screen.dart';
 import '../screens/settings_screen.dart';
 import '../screens/stats_author_screen.dart';
+import '../screens/stats_genre_screen.dart';
 import '../screens/stats_monthly_screen.dart';
 import '../screens/stats_screen.dart';
 import '../screens/stats_wishlist_screen.dart';
@@ -58,6 +59,10 @@ final appRouter = GoRouter(
               GoRoute(
                 path: 'wishlist',
                 builder: (context, state) => const StatsWishlistScreen(),
+              ),
+              GoRoute(
+                path: 'genre',
+                builder: (context, state) => const StatsGenreScreen(),
               ),
             ],
           ),

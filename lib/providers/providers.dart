@@ -143,6 +143,11 @@ List<Book> applyBookFilterAndSort(List<Book> books, BookFilter filter) {
           !filter.locations.contains(b.location)) {
         return false;
       }
+      if (filter.genres.isNotEmpty) {
+        final kdc = b.kdc?.trim();
+        final key = (kdc != null && kdc.isNotEmpty) ? kdc[0] : null;
+        if (key == null || !filter.genres.contains(key)) return false;
+      }
       return true;
     }).toList();
   }

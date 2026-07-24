@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../models/book.dart';
 import '../providers/providers.dart';
 import '../theme/app_theme.dart';
+import '../utils/kdc_genre.dart';
 import 'stats_common.dart';
 
 class StatsScreen extends ConsumerWidget {
@@ -74,6 +75,12 @@ class _StatsBody extends StatelessWidget {
         const SizedBox(height: 12),
         _Section2MediumLang(books: books),
         const SizedBox(height: 12),
+        _DrilldownCard(
+          title: '장르 지형도',
+          preview: _genrePreview(books),
+          route: '/stats/genre',
+        ),
+        const SizedBox(height: 8),
         _DrilldownCard(
           title: '출판연도 분포',
           preview: _yearPreview(books),
@@ -154,6 +161,23 @@ class _StatsBody extends StatelessWidget {
       },
       orElse: () => '...',
     );
+  }
+
+  static String _genrePreview(List<Book> books) {
+    final counts = <String, int>{};
+    for (final b in books) {
+      final kdc = b.kdc?.trim();
+      if (kdc == null || kdc.isEmpty) continue;
+      final key = kdc[0];
+      if (!kdcMainClassesOrdered.any((e) => e.key == key)) continue;
+      counts[key] = (counts[key] ?? 0) + 1;
+    }
+    if (counts.isEmpty) return '아직 지도를 그릴 수 없습니다';
+    final explored = counts.length;
+    final top = counts.entries.reduce((a, b) => a.value >= b.value ? a : b);
+    final topLabel =
+        kdcMainClassesOrdered.firstWhere((e) => e.key == top.key).value;
+    return '10개 영역 중 $explored곳 탐험 · 가장 넓은 곳은 $topLabel';
   }
 
   static String? _wishlistPreview(List<Book> books) {

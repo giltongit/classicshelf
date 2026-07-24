@@ -2,16 +2,20 @@ import 'package:flutter/material.dart';
 
 import '../models/book_filter.dart';
 import '../theme/app_theme.dart';
+import '../utils/kdc_genre.dart';
 
 class BookFilterSheet extends StatefulWidget {
   final BookFilter current;
   final List<String> allLocations;
+  /// 서가에 실제로 존재하는 KDC 대분류 키('0'~'9') 목록.
+  final List<String> allGenreKeys;
   final ValueChanged<BookFilter> onApply;
 
   const BookFilterSheet({
     super.key,
     required this.current,
     required this.allLocations,
+    required this.allGenreKeys,
     required this.onApply,
   });
 
@@ -125,6 +129,21 @@ class _BookFilterSheetState extends State<BookFilterSheet> {
                     onChanged: (v) =>
                         setState(() => _draft = _draft.copyWith(initial: v)),
                   ),
+                  if (widget.allGenreKeys.isNotEmpty) ...[
+                    _SectionTitle('장르'),
+                    _MultiChips(
+                      items: widget.allGenreKeys
+                          .map((k) => _ChipItem(
+                              kdcMainClassesOrdered
+                                  .firstWhere((e) => e.key == k)
+                                  .value,
+                              k))
+                          .toList(),
+                      selected: _draft.genres,
+                      onChanged: (v) => setState(
+                          () => _draft = _draft.copyWith(genres: v)),
+                    ),
+                  ],
                   if (widget.allLocations.isNotEmpty) ...[
                     _SectionTitle('서가 위치'),
                     _MultiChips(

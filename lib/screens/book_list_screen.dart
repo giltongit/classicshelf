@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 import '../models/book.dart';
 import '../providers/providers.dart';
 import '../theme/app_theme.dart';
+import '../utils/kdc_genre.dart';
 import 'book_filter_sheet.dart';
 
 class BookListScreen extends ConsumerWidget {
@@ -19,13 +20,24 @@ class BookListScreen extends ConsumerWidget {
     final filter = ref.watch(bookFilterProvider);
 
     void openFilterSheet() {
-      final allLocations = (ref.read(booksProvider).value ?? [])
+      final books = ref.read(booksProvider).value ?? [];
+      final allLocations = books
           .map((b) => b.location)
           .whereType<String>()
           .where((l) => l.isNotEmpty)
           .toSet()
           .toList()
         ..sort();
+      // 서가에 실제로 존재하는 KDC 대분류 키만, KDC 순서(0~9)대로
+      final presentKeys = books
+          .map((b) => b.kdc?.trim())
+          .where((k) => k != null && k.isNotEmpty)
+          .map((k) => k![0])
+          .toSet();
+      final allGenreKeys = kdcMainClassesOrdered
+          .map((e) => e.key)
+          .where(presentKeys.contains)
+          .toList();
 
       showModalBottomSheet<void>(
         context: context,
@@ -37,6 +49,7 @@ class BookListScreen extends ConsumerWidget {
         builder: (_) => BookFilterSheet(
           current: ref.read(bookFilterProvider),
           allLocations: allLocations,
+          allGenreKeys: allGenreKeys,
           onApply: (f) => ref.read(bookFilterProvider.notifier).update(f),
         ),
       );

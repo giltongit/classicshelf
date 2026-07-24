@@ -4,6 +4,10 @@ class BookFilter {
   final Set<String> media;
   final String? initial;
   final Set<String> locations;
+
+  /// KDC 대분류 키('0'~'9')들. kdc 필드 첫 자리로 매칭 (OR). (장르 필터)
+  final Set<String> genres;
+
   final String sortBy;
   final String searchQuery;
 
@@ -17,6 +21,7 @@ class BookFilter {
     this.media = const {},
     this.initial,
     this.locations = const {},
+    this.genres = const {},
     this.sortBy = 'createdAt',
     this.searchQuery = '',
     this.showDisposed = false,
@@ -30,6 +35,7 @@ class BookFilter {
     Set<String>? media,
     Object? initial = _absent,
     Set<String>? locations,
+    Set<String>? genres,
     String? sortBy,
     String? searchQuery,
     bool? showDisposed,
@@ -40,6 +46,7 @@ class BookFilter {
         media: media ?? this.media,
         initial: identical(initial, _absent) ? this.initial : initial as String?,
         locations: locations ?? this.locations,
+        genres: genres ?? this.genres,
         sortBy: sortBy ?? this.sortBy,
         searchQuery: searchQuery ?? this.searchQuery,
         showDisposed: showDisposed ?? this.showDisposed,
@@ -51,6 +58,7 @@ class BookFilter {
       media.isEmpty &&
       initial == null &&
       locations.isEmpty &&
+      genres.isEmpty &&
       sortBy == 'createdAt' &&
       searchQuery.isEmpty &&
       !showDisposed;
@@ -62,5 +70,6 @@ class BookFilter {
       media.length +
       (initial != null ? 1 : 0) +
       locations.length +
+      genres.length +
       (showDisposed ? 1 : 0);
 }
