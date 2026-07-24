@@ -28,6 +28,10 @@ class Book {
   final String? language;
   final String? callNumber;
   final String? kdc;
+
+  /// 드롭다운 장르 추정치(1~2자리 프리픽스). kdc(정밀 코드)와 분리 — 장르 파생은
+  /// [effectiveKdc]로 kdc 우선·manualKdc 대체 (§26 정정 #29-1).
+  final String? manualKdc;
   final String? ddc;
   final String? lc;
   final DateTime? acquiredAt;
@@ -70,6 +74,7 @@ class Book {
     this.language,
     this.callNumber,
     this.kdc,
+    this.manualKdc,
     this.ddc,
     this.lc,
     this.acquiredAt,
@@ -77,6 +82,11 @@ class Book {
     this.updatedAt,
     this.disposedAt,
   });
+
+  /// 장르 파생용 실효 KDC — kdc(정밀 코드)가 있으면 그것, 없으면 manualKdc(추정치).
+  /// 장르를 계산하는 모든 지점은 b.kdc가 아니라 이 값을 읽어야 한다 (§26 정정 #29-1).
+  String? get effectiveKdc =>
+      (kdc?.trim().isNotEmpty ?? false) ? kdc : manualKdc;
 
   // acquiredAt/disposedAt은 null로 명시 설정(날짜 지우기)이 필요하므로 sentinel 패턴 사용.
   static const _absent = Object();
@@ -103,6 +113,7 @@ class Book {
     String? language,
     String? callNumber,
     String? kdc,
+    String? manualKdc,
     String? ddc,
     String? lc,
     Object? acquiredAt = _absent,
@@ -132,6 +143,7 @@ class Book {
         language: language ?? this.language,
         callNumber: callNumber ?? this.callNumber,
         kdc: kdc ?? this.kdc,
+        manualKdc: manualKdc ?? this.manualKdc,
         ddc: ddc ?? this.ddc,
         lc: lc ?? this.lc,
         acquiredAt: acquiredAt == _absent ? this.acquiredAt : acquiredAt as DateTime?,
@@ -163,6 +175,7 @@ class Book {
         if (language != null) 'language': language,
         if (callNumber != null) 'call_number': callNumber,
         if (kdc != null) 'kdc': kdc,
+        if (manualKdc != null) 'manual_kdc': manualKdc,
         if (ddc != null) 'ddc': ddc,
         if (lc  != null) 'lc':  lc,
         if (acquiredAt != null) 'acquired_at': _formatDate(acquiredAt!),
@@ -189,6 +202,7 @@ class Book {
         'language': language,
         'call_number': callNumber,
         'kdc': kdc,
+        'manual_kdc': manualKdc,
         'ddc': ddc,
         'lc':  lc,
         'acquired_at': acquiredAt != null ? _formatDate(acquiredAt!) : null,
@@ -219,6 +233,7 @@ class Book {
         language: json['language'] as String?,
         callNumber: json['call_number'] as String?,
         kdc: json['kdc'] as String?,
+        manualKdc: json['manual_kdc'] as String?,
         ddc: json['ddc'] as String?,
         lc:  json['lc']  as String?,
         acquiredAt: _parseDateTime(json['acquired_at']),

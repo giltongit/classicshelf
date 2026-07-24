@@ -67,7 +67,7 @@ class _GenreBody extends StatelessWidget {
     final byMain = <String, List<Book>>{};
     final unclassified = <Book>[];
     for (final b in books) {
-      final key = _mainKeyOf(b.kdc);
+      final key = _mainKeyOf(b.effectiveKdc);
       if (key == null) {
         unclassified.add(b);
       } else {
@@ -308,7 +308,7 @@ class _DivisionSheet extends StatelessWidget {
     final divisions = kdcDivisionsOf(mainKey);
     final byDivision = <String, List<Book>>{};
     for (final b in mainBooks) {
-      final t = b.kdc?.trim() ?? '';
+      final t = b.effectiveKdc?.trim() ?? '';
       if (t.length < 2) continue;
       final divKey = t.substring(0, 2);
       byDivision.putIfAbsent(divKey, () => []).add(b);

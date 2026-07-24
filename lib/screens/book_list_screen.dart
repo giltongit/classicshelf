@@ -28,9 +28,10 @@ class BookListScreen extends ConsumerWidget {
           .toSet()
           .toList()
         ..sort();
-      // 서가에 실제로 존재하는 KDC 대분류 키만, KDC 순서(0~9)대로
+      // 서가에 실제로 존재하는 KDC 대분류 키만, KDC 순서(0~9)대로.
+      // effectiveKdc: manual_kdc로만 분류된 책도 필터 칩에 나타나야 한다.
       final presentKeys = books
-          .map((b) => b.kdc?.trim())
+          .map((b) => b.effectiveKdc?.trim())
           .where((k) => k != null && k.isNotEmpty)
           .map((k) => k![0])
           .toSet();

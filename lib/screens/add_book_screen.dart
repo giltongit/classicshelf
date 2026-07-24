@@ -69,11 +69,6 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
   /// 중분류 키(2자리, 예 '81'). null이면 대분류까지만.
   String? _genreDiv;
 
-  /// 사용자가 드롭다운을 실제로 **바꿨는지**. false면 저장 시 기존 정밀 코드
-  /// (813.6 등)를 그대로 보존한다 — 코스한 드롭다운이 소수점 분류를 뭉개지
-  /// 않게 하는 불변식 (§26 "정밀 코드 보존").
-  bool _genreChanged = false;
-
   // ── "내 분류" 태그 ───────────────────────────────────────────────────────
   List<String> _myTags = [];
   late final TextEditingController _myTagCtrl;
@@ -99,9 +94,9 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
     _lcCtrl     = TextEditingController(text: b?.lc  ?? '');
     _review     = TextEditingController(text: b?.review    ?? '');
 
-    // 불변식 1 — 드롭다운은 빈 칸이 아니라 "지금 이 책은 이렇게 분류돼 있다"를
-    // 보여주고 수정하는 형태여야 한다.
-    _syncGenreFromKdc();
+    // 드롭다운은 빈 칸이 아니라 "지금 이 책은 이렇게 분류돼 있다"(effectiveKdc)를
+    // 보여주고 수정하는 형태여야 한다 — kdc 있으면 그것, 없으면 manual_kdc 파생.
+    _syncGenreFromSource();
     _myTags = parseMyTags(b?.genre ?? s?.genre);
     _myTagCtrl = TextEditingController();
     _myTagFocusNode = FocusNode();
@@ -184,20 +179,35 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
       if (classNo != null && classNo.isNotEmpty && mounted) {
         setState(() {
           _kdcCtrl.text = classNo;
-          // 자동 취득분도 드롭다운에 반영한다. _genreChanged는 건드리지 않으므로
-          // 사용자가 손대지 않는 한 저장 시 이 정밀 코드가 그대로 보존된다.
-          _syncGenreFromKdc();
+          // 자동 취득분은 정밀 코드(kdc)이므로 이후 드롭다운은 읽기 전용이 되고
+          // effectiveKdc가 이 값을 우선 파생한다.
+          _syncGenreFromSource();
         });
       }
     } catch (_) {}
   }
 
-  // ── 장르 ─────────────────────────────────────────────────────────────────
+  // ── 장르 (§26 정정 #29-1) ────────────────────────────────────────────────
+  //
+  // kdc는 정밀 코드(자동 취득·직접 입력분)만 담는 순수 필드다. 드롭다운 추정치는
+  // 절대 kdc를 덮지 않고 별도 manual_kdc에 저장한다. 장르 파생은 effectiveKdc
+  // (kdc 우선, 없으면 manual_kdc). 그래서:
+  //  - kdc 있음 → 드롭다운 읽기 전용(kdc 파생 표시). manual_kdc는 무시됨.
+  //  - kdc 없음 → 드롭다운 활성 → 선택값을 manual_kdc로 저장.
 
-  /// 원시 kdc 텍스트에서 드롭다운 선택값을 역매핑한다.
+  /// kdc(정밀 코드)가 있으면 드롭다운을 잠근다.
+  bool get _kdcLocked => _kdcCtrl.text.trim().isNotEmpty;
+
+  /// 드롭다운에 표시할 실효 KDC — kdc 우선, 없으면 편집 대상의 manual_kdc.
+  String? get _dropdownSource {
+    final k = _kdcCtrl.text.trim();
+    return k.isNotEmpty ? k : widget.editBook?.manualKdc;
+  }
+
+  /// 실효 KDC 문자열에서 대분류/중분류 드롭다운 선택값을 역매핑한다.
   /// 매핑에 없는 대분류/중분류는 null로 둬서 없는 항목을 고르지 않게 한다.
-  void _syncGenreFromKdc() {
-    final raw = _kdcCtrl.text.trim();
+  void _syncGenreFromSource() {
+    final raw = _dropdownSource?.trim() ?? '';
     if (raw.isEmpty) {
       _genreMain = null;
       _genreDiv = null;
@@ -216,13 +226,16 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
         : null;
   }
 
-  /// 저장할 kdc 값. 불변식 2 — 드롭다운을 실제로 바꾼 경우에만 프리픽스로
-  /// 재작성하고, 그렇지 않으면 원시 입력(정밀 코드)을 그대로 쓴다.
+  /// 저장할 kdc — 원시 입력값 그대로. 드롭다운은 절대 이 값을 건드리지 않는다.
   String? _resolveKdc() {
-    if (!_genreChanged) {
-      final raw = _kdcCtrl.text.trim();
-      return raw.isEmpty ? null : raw;
-    }
+    final raw = _kdcCtrl.text.trim();
+    return raw.isEmpty ? null : raw;
+  }
+
+  /// 저장할 manual_kdc. kdc가 있으면 그것이 우선하므로 기존 값을 보존(무시됨,
+  /// 규칙 6 — 별도 정리 불필요). kdc가 비면 드롭다운 선택값을 쓴다.
+  String? _resolveManualKdc() {
+    if (_kdcLocked) return widget.editBook?.manualKdc;
     if (_genreMain == null) return null;
     return _genreDiv ?? _genreMain;
   }
@@ -232,26 +245,19 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
     setState(() {
       _genreMain = key;
       _genreDiv = null; // 대분류가 바뀌면 중분류는 의미를 잃는다
-      _genreChanged = true;
       _myTagSuggestions = [];
     });
   }
 
   void _onGenreDivChanged(String? key) {
     if (key == _genreDiv) return;
-    setState(() {
-      _genreDiv = key;
-      _genreChanged = true;
-    });
+    setState(() => _genreDiv = key);
   }
 
-  /// 접이식 고급 영역의 원시 KDC 입력. 더 정밀하므로 드롭다운보다 우선한다 —
-  /// 여기를 건드리면 드롭다운을 다시 맞추고 "변경됨" 플래그를 되돌린다.
+  /// 원시 KDC 입력이 바뀌면 잠금 상태와 드롭다운 파생을 다시 계산한다.
+  /// kdc를 채우면 드롭다운이 잠기고, 지우면 manual_kdc(있으면) 기준으로 풀린다.
   void _onRawKdcChanged(String _) {
-    setState(() {
-      _syncGenreFromKdc();
-      _genreChanged = false;
-    });
+    setState(_syncGenreFromSource);
   }
 
   // ── "내 분류" 태그 ───────────────────────────────────────────────────────
@@ -337,6 +343,7 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
           language:   base.language,
           callNumber: _callNumber.text.trim().isEmpty ? null : _callNumber.text.trim(),
           kdc: _resolveKdc(),
+          manualKdc: _resolveManualKdc(),
           ddc: _ddcCtrl.text.trim().isEmpty ? null : _ddcCtrl.text.trim(),
           lc:  _lcCtrl.text.trim().isEmpty  ? null : _lcCtrl.text.trim(),
           acquiredAt: _acquiredAt,
@@ -360,6 +367,7 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
           location:   _nonEmpty('location'),
           callNumber: _nonEmpty('callNumber'),
           kdc: _resolveKdc(),
+          manualKdc: _resolveManualKdc(),
           ddc: _ddcCtrl.text.trim().isEmpty ? null : _ddcCtrl.text.trim(),
           lc:  _lcCtrl.text.trim().isEmpty  ? null : _lcCtrl.text.trim(),
           review:     _nonEmpty('review'),
@@ -548,9 +556,14 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
                 _Field(controller: _isbn,      label: 'ISBN',   keyboardType: TextInputType.number),
                 _Field(controller: _publisher, label: '출판사'),
                 _Field(controller: _year,      label: '출판연도', keyboardType: TextInputType.number),
+                // 정밀 코드(kdc) 직접 입력 — add·edit 상시 노출. 채우면 아래
+                // 드롭다운이 잠기고 이 값이 장르로 우선한다 (§26 정정 #29-1).
+                _Field(controller: _kdcCtrl, label: 'KDC (한국십진분류기호)',
+                    hint: '예) 813.6', onChanged: _onRawKdcChanged),
                 _GenreSection(
                   mainKey: _genreMain,
                   divKey: _genreDiv,
+                  locked: _kdcLocked,
                   onMainChanged: _onGenreMainChanged,
                   onDivChanged: _onGenreDivChanged,
                   tags: _myTags,
@@ -582,7 +595,7 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
                         const Text(
-                          '분류기호 직접 입력 (선택)',
+                          'DDC / LC (선택)',
                           style: TextStyle(color: AppColors.muted, fontSize: 13),
                         ),
                         Icon(
@@ -595,9 +608,6 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
                   ),
                 ),
                 if (_classExpanded) ...[
-                  // 드롭다운보다 정밀하므로 여기 입력이 우선한다 (§26 "정밀 코드 직접 입력").
-                  _Field(controller: _kdcCtrl, label: 'KDC (한국십진분류기호)',
-                      hint: '예) 813.6', onChanged: _onRawKdcChanged),
                   _Field(controller: _ddcCtrl, label: 'DDC (듀이십진분류법)',
                       hint: '예) 895.73'),
                   _Field(controller: _lcCtrl, label: 'LC (미국의회도서관분류법)',
@@ -749,6 +759,9 @@ class _CoverPicker extends StatelessWidget {
 class _GenreSection extends StatelessWidget {
   final String? mainKey;
   final String? divKey;
+
+  /// kdc(정밀 코드)가 있으면 true — 드롭다운은 읽기 전용이고 kdc가 장르로 우선한다.
+  final bool locked;
   final ValueChanged<String?> onMainChanged;
   final ValueChanged<String?> onDivChanged;
 
@@ -763,6 +776,7 @@ class _GenreSection extends StatelessWidget {
   const _GenreSection({
     required this.mainKey,
     required this.divKey,
+    required this.locked,
     required this.onMainChanged,
     required this.onDivChanged,
     required this.tags,
@@ -787,6 +801,14 @@ class _GenreSection extends StatelessWidget {
         children: [
           const Text('장르',
               style: TextStyle(color: AppColors.muted, fontSize: 13)),
+          if (locked)
+            const Padding(
+              padding: EdgeInsets.only(top: 4),
+              child: Text(
+                'KDC 정밀 코드가 있어 장르가 자동 결정됩니다. 바꾸려면 위 KDC를 비우세요.',
+                style: TextStyle(color: AppColors.muted, fontSize: 11),
+              ),
+            ),
           const SizedBox(height: 8),
           DropdownButtonFormField<String?>(
             initialValue: mainKey,
@@ -807,7 +829,8 @@ class _GenreSection extends StatelessWidget {
                 ),
               ),
             ],
-            onChanged: onMainChanged,
+            // kdc 잠금 시 비활성 — 드롭다운이 kdc를 덮지 못하게.
+            onChanged: locked ? null : onMainChanged,
           ),
           const SizedBox(height: 12),
           DropdownButtonFormField<String?>(
@@ -817,8 +840,8 @@ class _GenreSection extends StatelessWidget {
             style: const TextStyle(color: AppColors.cream, fontSize: 14),
             decoration: InputDecoration(
               labelText: '중분류 (선택)',
-              // 대분류가 없으면 고를 중분류도 없다.
-              enabled: mainKey != null,
+              // 대분류가 없으면(또는 잠금) 고를 중분류도 없다.
+              enabled: !locked && mainKey != null,
             ),
             items: [
               const DropdownMenuItem<String?>(
@@ -833,7 +856,7 @@ class _GenreSection extends StatelessWidget {
                 ),
               ),
             ],
-            onChanged: mainKey == null ? null : onDivChanged,
+            onChanged: (locked || mainKey == null) ? null : onDivChanged,
           ),
           const SizedBox(height: 14),
           if (tags.isNotEmpty)

@@ -31,6 +31,10 @@ class Books extends Table {
   TextColumn get language => text().nullable()();
   TextColumn get callNumber => text().nullable()();
   TextColumn get kdc => text().nullable()();
+  /// 드롭다운 장르 추정치(대분류 1자리 또는 중분류 2자리 프리픽스). kdc(정밀 코드)와
+  /// 분리해 저장하고, 장르 파생은 effectiveKdc(kdc 우선, 없으면 manualKdc)로 한다
+  /// — 추정치가 kdc를 오염시키지 않게 (§26 정정 #29-1).
+  TextColumn get manualKdc => text().nullable()();
   TextColumn get ddc => text().nullable()();
   TextColumn get lc  => text().nullable()();
   DateTimeColumn get acquiredAt => dateTime().nullable()();
@@ -61,7 +65,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
   @override
-  int get schemaVersion => 7;
+  int get schemaVersion => 8;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -88,6 +92,9 @@ class AppDatabase extends _$AppDatabase {
           }
           if (from < 7) {
             await m.addColumn(books, books.disposedAt);
+          }
+          if (from < 8) {
+            await m.addColumn(books, books.manualKdc);
           }
         },
       );

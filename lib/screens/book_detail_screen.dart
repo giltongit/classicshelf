@@ -300,7 +300,9 @@ class _BookDetailBody extends StatelessWidget {
     final rows = _filterInfoRows(pairs);
 
     // 장르는 "경로 + 내 분류 칩"을 한 줄에 얹으므로 _InfoRow로 표현할 수 없다.
-    final path = kdcToGenre(b.kdc)?.pathLabel;
+    // effectiveKdc: 정밀 코드가 없으면 manual_kdc 추정치로 장르를 표시한다.
+    // (단, 아래 'KDC' 정보 행과 도서관 서가찾기는 순수 b.kdc만 — 추정치 위장 금지.)
+    final path = kdcToGenre(b.effectiveKdc)?.pathLabel;
     final tags = parseMyTags(b.genre);
     if (path != null || tags.isNotEmpty) {
       rows.add(_GenreInfoRow(path: path, tags: tags));

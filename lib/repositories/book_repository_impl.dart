@@ -487,6 +487,7 @@ class BookRepositoryImpl implements BookRepository {
       if (book.language != null) 'language': book.language,
       if (book.callNumber != null) 'call_number': book.callNumber,
       if (book.kdc != null) 'kdc': book.kdc,
+      if (book.manualKdc != null) 'manual_kdc': book.manualKdc,
       if (book.ddc != null) 'ddc': book.ddc,
       if (book.lc  != null) 'lc':  book.lc,
       if (book.acquiredAt != null)
@@ -521,6 +522,7 @@ class BookRepositoryImpl implements BookRepository {
         language: d.language,
         callNumber: d.callNumber,
         kdc: d.kdc,
+        manualKdc: d.manualKdc,
         ddc: d.ddc,
         lc:  d.lc,
         acquiredAt: d.acquiredAt,
@@ -550,6 +552,7 @@ class BookRepositoryImpl implements BookRepository {
         language: Value(b.language),
         callNumber: Value(b.callNumber),
         kdc: Value(b.kdc),
+        manualKdc: Value(b.manualKdc),
         ddc: Value(b.ddc),
         lc:  Value(b.lc),
         acquiredAt: Value(b.acquiredAt),

@@ -230,6 +230,17 @@ class $BooksTable extends Books with TableInfo<$BooksTable, BookData> {
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _manualKdcMeta = const VerificationMeta(
+    'manualKdc',
+  );
+  @override
+  late final GeneratedColumn<String> manualKdc = GeneratedColumn<String>(
+    'manual_kdc',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _ddcMeta = const VerificationMeta('ddc');
   @override
   late final GeneratedColumn<String> ddc = GeneratedColumn<String>(
@@ -317,6 +328,7 @@ class $BooksTable extends Books with TableInfo<$BooksTable, BookData> {
     language,
     callNumber,
     kdc,
+    manualKdc,
     ddc,
     lc,
     acquiredAt,
@@ -471,6 +483,12 @@ class $BooksTable extends Books with TableInfo<$BooksTable, BookData> {
         kdc.isAcceptableOrUnknown(data['kdc']!, _kdcMeta),
       );
     }
+    if (data.containsKey('manual_kdc')) {
+      context.handle(
+        _manualKdcMeta,
+        manualKdc.isAcceptableOrUnknown(data['manual_kdc']!, _manualKdcMeta),
+      );
+    }
     if (data.containsKey('ddc')) {
       context.handle(
         _ddcMeta,
@@ -597,6 +615,10 @@ class $BooksTable extends Books with TableInfo<$BooksTable, BookData> {
         DriftSqlType.string,
         data['${effectivePrefix}kdc'],
       ),
+      manualKdc: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}manual_kdc'],
+      ),
       ddc: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}ddc'],
@@ -652,6 +674,11 @@ class BookData extends DataClass implements Insertable<BookData> {
   final String? language;
   final String? callNumber;
   final String? kdc;
+
+  /// 드롭다운 장르 추정치(대분류 1자리 또는 중분류 2자리 프리픽스). kdc(정밀 코드)와
+  /// 분리해 저장하고, 장르 파생은 effectiveKdc(kdc 우선, 없으면 manualKdc)로 한다
+  /// — 추정치가 kdc를 오염시키지 않게 (§26 정정 #29-1).
+  final String? manualKdc;
   final String? ddc;
   final String? lc;
   final DateTime? acquiredAt;
@@ -684,6 +711,7 @@ class BookData extends DataClass implements Insertable<BookData> {
     this.language,
     this.callNumber,
     this.kdc,
+    this.manualKdc,
     this.ddc,
     this.lc,
     this.acquiredAt,
@@ -740,6 +768,9 @@ class BookData extends DataClass implements Insertable<BookData> {
     }
     if (!nullToAbsent || kdc != null) {
       map['kdc'] = Variable<String>(kdc);
+    }
+    if (!nullToAbsent || manualKdc != null) {
+      map['manual_kdc'] = Variable<String>(manualKdc);
     }
     if (!nullToAbsent || ddc != null) {
       map['ddc'] = Variable<String>(ddc);
@@ -801,6 +832,9 @@ class BookData extends DataClass implements Insertable<BookData> {
           ? const Value.absent()
           : Value(callNumber),
       kdc: kdc == null && nullToAbsent ? const Value.absent() : Value(kdc),
+      manualKdc: manualKdc == null && nullToAbsent
+          ? const Value.absent()
+          : Value(manualKdc),
       ddc: ddc == null && nullToAbsent ? const Value.absent() : Value(ddc),
       lc: lc == null && nullToAbsent ? const Value.absent() : Value(lc),
       acquiredAt: acquiredAt == null && nullToAbsent
@@ -841,6 +875,7 @@ class BookData extends DataClass implements Insertable<BookData> {
       language: serializer.fromJson<String?>(json['language']),
       callNumber: serializer.fromJson<String?>(json['callNumber']),
       kdc: serializer.fromJson<String?>(json['kdc']),
+      manualKdc: serializer.fromJson<String?>(json['manualKdc']),
       ddc: serializer.fromJson<String?>(json['ddc']),
       lc: serializer.fromJson<String?>(json['lc']),
       acquiredAt: serializer.fromJson<DateTime?>(json['acquiredAt']),
@@ -874,6 +909,7 @@ class BookData extends DataClass implements Insertable<BookData> {
       'language': serializer.toJson<String?>(language),
       'callNumber': serializer.toJson<String?>(callNumber),
       'kdc': serializer.toJson<String?>(kdc),
+      'manualKdc': serializer.toJson<String?>(manualKdc),
       'ddc': serializer.toJson<String?>(ddc),
       'lc': serializer.toJson<String?>(lc),
       'acquiredAt': serializer.toJson<DateTime?>(acquiredAt),
@@ -905,6 +941,7 @@ class BookData extends DataClass implements Insertable<BookData> {
     Value<String?> language = const Value.absent(),
     Value<String?> callNumber = const Value.absent(),
     Value<String?> kdc = const Value.absent(),
+    Value<String?> manualKdc = const Value.absent(),
     Value<String?> ddc = const Value.absent(),
     Value<String?> lc = const Value.absent(),
     Value<DateTime?> acquiredAt = const Value.absent(),
@@ -933,6 +970,7 @@ class BookData extends DataClass implements Insertable<BookData> {
     language: language.present ? language.value : this.language,
     callNumber: callNumber.present ? callNumber.value : this.callNumber,
     kdc: kdc.present ? kdc.value : this.kdc,
+    manualKdc: manualKdc.present ? manualKdc.value : this.manualKdc,
     ddc: ddc.present ? ddc.value : this.ddc,
     lc: lc.present ? lc.value : this.lc,
     acquiredAt: acquiredAt.present ? acquiredAt.value : this.acquiredAt,
@@ -971,6 +1009,7 @@ class BookData extends DataClass implements Insertable<BookData> {
           ? data.callNumber.value
           : this.callNumber,
       kdc: data.kdc.present ? data.kdc.value : this.kdc,
+      manualKdc: data.manualKdc.present ? data.manualKdc.value : this.manualKdc,
       ddc: data.ddc.present ? data.ddc.value : this.ddc,
       lc: data.lc.present ? data.lc.value : this.lc,
       acquiredAt: data.acquiredAt.present
@@ -1008,6 +1047,7 @@ class BookData extends DataClass implements Insertable<BookData> {
           ..write('language: $language, ')
           ..write('callNumber: $callNumber, ')
           ..write('kdc: $kdc, ')
+          ..write('manualKdc: $manualKdc, ')
           ..write('ddc: $ddc, ')
           ..write('lc: $lc, ')
           ..write('acquiredAt: $acquiredAt, ')
@@ -1041,6 +1081,7 @@ class BookData extends DataClass implements Insertable<BookData> {
     language,
     callNumber,
     kdc,
+    manualKdc,
     ddc,
     lc,
     acquiredAt,
@@ -1073,6 +1114,7 @@ class BookData extends DataClass implements Insertable<BookData> {
           other.language == this.language &&
           other.callNumber == this.callNumber &&
           other.kdc == this.kdc &&
+          other.manualKdc == this.manualKdc &&
           other.ddc == this.ddc &&
           other.lc == this.lc &&
           other.acquiredAt == this.acquiredAt &&
@@ -1103,6 +1145,7 @@ class BooksCompanion extends UpdateCompanion<BookData> {
   final Value<String?> language;
   final Value<String?> callNumber;
   final Value<String?> kdc;
+  final Value<String?> manualKdc;
   final Value<String?> ddc;
   final Value<String?> lc;
   final Value<DateTime?> acquiredAt;
@@ -1131,6 +1174,7 @@ class BooksCompanion extends UpdateCompanion<BookData> {
     this.language = const Value.absent(),
     this.callNumber = const Value.absent(),
     this.kdc = const Value.absent(),
+    this.manualKdc = const Value.absent(),
     this.ddc = const Value.absent(),
     this.lc = const Value.absent(),
     this.acquiredAt = const Value.absent(),
@@ -1160,6 +1204,7 @@ class BooksCompanion extends UpdateCompanion<BookData> {
     this.language = const Value.absent(),
     this.callNumber = const Value.absent(),
     this.kdc = const Value.absent(),
+    this.manualKdc = const Value.absent(),
     this.ddc = const Value.absent(),
     this.lc = const Value.absent(),
     this.acquiredAt = const Value.absent(),
@@ -1191,6 +1236,7 @@ class BooksCompanion extends UpdateCompanion<BookData> {
     Expression<String>? language,
     Expression<String>? callNumber,
     Expression<String>? kdc,
+    Expression<String>? manualKdc,
     Expression<String>? ddc,
     Expression<String>? lc,
     Expression<DateTime>? acquiredAt,
@@ -1220,6 +1266,7 @@ class BooksCompanion extends UpdateCompanion<BookData> {
       if (language != null) 'language': language,
       if (callNumber != null) 'call_number': callNumber,
       if (kdc != null) 'kdc': kdc,
+      if (manualKdc != null) 'manual_kdc': manualKdc,
       if (ddc != null) 'ddc': ddc,
       if (lc != null) 'lc': lc,
       if (acquiredAt != null) 'acquired_at': acquiredAt,
@@ -1251,6 +1298,7 @@ class BooksCompanion extends UpdateCompanion<BookData> {
     Value<String?>? language,
     Value<String?>? callNumber,
     Value<String?>? kdc,
+    Value<String?>? manualKdc,
     Value<String?>? ddc,
     Value<String?>? lc,
     Value<DateTime?>? acquiredAt,
@@ -1280,6 +1328,7 @@ class BooksCompanion extends UpdateCompanion<BookData> {
       language: language ?? this.language,
       callNumber: callNumber ?? this.callNumber,
       kdc: kdc ?? this.kdc,
+      manualKdc: manualKdc ?? this.manualKdc,
       ddc: ddc ?? this.ddc,
       lc: lc ?? this.lc,
       acquiredAt: acquiredAt ?? this.acquiredAt,
@@ -1355,6 +1404,9 @@ class BooksCompanion extends UpdateCompanion<BookData> {
     if (kdc.present) {
       map['kdc'] = Variable<String>(kdc.value);
     }
+    if (manualKdc.present) {
+      map['manual_kdc'] = Variable<String>(manualKdc.value);
+    }
     if (ddc.present) {
       map['ddc'] = Variable<String>(ddc.value);
     }
@@ -1400,6 +1452,7 @@ class BooksCompanion extends UpdateCompanion<BookData> {
           ..write('language: $language, ')
           ..write('callNumber: $callNumber, ')
           ..write('kdc: $kdc, ')
+          ..write('manualKdc: $manualKdc, ')
           ..write('ddc: $ddc, ')
           ..write('lc: $lc, ')
           ..write('acquiredAt: $acquiredAt, ')
@@ -1802,6 +1855,7 @@ typedef $$BooksTableCreateCompanionBuilder =
       Value<String?> language,
       Value<String?> callNumber,
       Value<String?> kdc,
+      Value<String?> manualKdc,
       Value<String?> ddc,
       Value<String?> lc,
       Value<DateTime?> acquiredAt,
@@ -1832,6 +1886,7 @@ typedef $$BooksTableUpdateCompanionBuilder =
       Value<String?> language,
       Value<String?> callNumber,
       Value<String?> kdc,
+      Value<String?> manualKdc,
       Value<String?> ddc,
       Value<String?> lc,
       Value<DateTime?> acquiredAt,
@@ -1950,6 +2005,11 @@ class $$BooksTableFilterComposer extends Composer<_$AppDatabase, $BooksTable> {
 
   ColumnFilters<String> get kdc => $composableBuilder(
     column: $table.kdc,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get manualKdc => $composableBuilder(
+    column: $table.manualKdc,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -2098,6 +2158,11 @@ class $$BooksTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get manualKdc => $composableBuilder(
+    column: $table.manualKdc,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get ddc => $composableBuilder(
     column: $table.ddc,
     builder: (column) => ColumnOrderings(column),
@@ -2209,6 +2274,9 @@ class $$BooksTableAnnotationComposer
   GeneratedColumn<String> get kdc =>
       $composableBuilder(column: $table.kdc, builder: (column) => column);
 
+  GeneratedColumn<String> get manualKdc =>
+      $composableBuilder(column: $table.manualKdc, builder: (column) => column);
+
   GeneratedColumn<String> get ddc =>
       $composableBuilder(column: $table.ddc, builder: (column) => column);
 
@@ -2281,6 +2349,7 @@ class $$BooksTableTableManager
                 Value<String?> language = const Value.absent(),
                 Value<String?> callNumber = const Value.absent(),
                 Value<String?> kdc = const Value.absent(),
+                Value<String?> manualKdc = const Value.absent(),
                 Value<String?> ddc = const Value.absent(),
                 Value<String?> lc = const Value.absent(),
                 Value<DateTime?> acquiredAt = const Value.absent(),
@@ -2309,6 +2378,7 @@ class $$BooksTableTableManager
                 language: language,
                 callNumber: callNumber,
                 kdc: kdc,
+                manualKdc: manualKdc,
                 ddc: ddc,
                 lc: lc,
                 acquiredAt: acquiredAt,
@@ -2339,6 +2409,7 @@ class $$BooksTableTableManager
                 Value<String?> language = const Value.absent(),
                 Value<String?> callNumber = const Value.absent(),
                 Value<String?> kdc = const Value.absent(),
+                Value<String?> manualKdc = const Value.absent(),
                 Value<String?> ddc = const Value.absent(),
                 Value<String?> lc = const Value.absent(),
                 Value<DateTime?> acquiredAt = const Value.absent(),
@@ -2367,6 +2438,7 @@ class $$BooksTableTableManager
                 language: language,
                 callNumber: callNumber,
                 kdc: kdc,
+                manualKdc: manualKdc,
                 ddc: ddc,
                 lc: lc,
                 acquiredAt: acquiredAt,

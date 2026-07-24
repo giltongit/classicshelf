@@ -114,7 +114,7 @@ Map<String, Set<String>> myTagsByKdcMain(List<Book> books) {
   for (final b in books) {
     final tags = parseMyTags(b.genre);
     if (tags.isEmpty) continue;
-    final kdc = b.kdc?.trim();
+    final kdc = b.effectiveKdc?.trim();
     final key = (kdc != null && kdc.isNotEmpty) ? kdc[0] : '';
     result.putIfAbsent(key, () => <String>{}).addAll(tags);
   }
@@ -162,7 +162,7 @@ List<Book> applyBookFilterAndSort(List<Book> books, BookFilter filter) {
         return false;
       }
       if (filter.genres.isNotEmpty) {
-        final kdc = b.kdc?.trim();
+        final kdc = b.effectiveKdc?.trim();
         final key = (kdc != null && kdc.isNotEmpty) ? kdc[0] : null;
         if (key == null || !filter.genres.contains(key)) return false;
       }
