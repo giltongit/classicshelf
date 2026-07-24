@@ -206,10 +206,9 @@ class _BookDetailBody extends StatelessWidget {
                 const Divider(color: AppColors.dim),
                 const SizedBox(height: 16),
 
-                ..._infoRows(book),
+                ..._infoRowsMain(book),
 
-                if (book.status == 'wishlist' &&
-                    (book.isbn?.isNotEmpty ?? false)) ...[
+                if (book.isbn?.isNotEmpty ?? false) ...[
                   const SizedBox(height: 16),
                   SizedBox(
                     width: double.infinity,
@@ -229,6 +228,8 @@ class _BookDetailBody extends StatelessWidget {
                   ),
                 ],
 
+                ..._infoRowsTail(book),
+
                 if ((book.review ?? '').isNotEmpty) ...[
                   const SizedBox(height: 16),
                   const Text(
@@ -237,6 +238,17 @@ class _BookDetailBody extends StatelessWidget {
                   ),
                   const SizedBox(height: 6),
                   Text(book.review!, style: const TextStyle(color: AppColors.cream, height: 1.6)),
+                ],
+
+                if ((book.description ?? '').isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  const Text(
+                    '책 소개',
+                    style: TextStyle(color: AppColors.muted, fontSize: 12),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(book.description!,
+                      style: const TextStyle(color: AppColors.cream, height: 1.6)),
                 ],
               ]),
             ),
@@ -263,7 +275,9 @@ class _BookDetailBody extends StatelessWidget {
     );
   }
 
-  List<Widget> _infoRows(Book b) {
+  // 장르까지 — [가까운 도서관에서 이 책 찾아보기] 버튼은 이 목록과 _infoRowsTail
+  // 사이, 장르 바로 아래에 표시된다.
+  List<Widget> _infoRowsMain(Book b) {
     final acquiredStr = b.acquiredAt != null
         ? '${b.acquiredAt!.year}년 ${b.acquiredAt!.month}월 ${b.acquiredAt!.day}일'
         : null;
@@ -281,15 +295,24 @@ class _BookDetailBody extends StatelessWidget {
                : b.medium == 'ebook' ? '전자책'
                : b.medium == 'audio' ? '오디오북'
                : b.medium),
-      ('장르',    kdcToGenre(b.kdc)?.label),
+      ('장르',    kdcToGenre(b.kdc)?.pathLabel),
+    ];
+    return _filterInfoRows(pairs);
+  }
+
+  // 태그·총 페이지 — 장르 아래 버튼 다음에 이어서 표시된다.
+  List<Widget> _infoRowsTail(Book b) {
+    final pairs = <(String, String?)>[
       ('태그',    b.genre),
       ('총 페이지', b.pageCount?.toString()),
     ];
-    return pairs
-        .where((p) => p.$2 != null && p.$2!.isNotEmpty)
-        .map((p) => _InfoRow(label: p.$1, value: p.$2!))
-        .toList();
+    return _filterInfoRows(pairs);
   }
+
+  List<Widget> _filterInfoRows(List<(String, String?)> pairs) => pairs
+      .where((p) => p.$2 != null && p.$2!.isNotEmpty)
+      .map((p) => _InfoRow(label: p.$1, value: p.$2!))
+      .toList();
 
   Future<void> _confirmDelete(BuildContext context) async {
     final confirmed = await showDialog<bool>(
