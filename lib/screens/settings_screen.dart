@@ -136,6 +136,8 @@ class SettingsScreen extends ConsumerWidget {
     await showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
+        // 가로 모드에서 키보드가 올라오면 세로 여백이 모자라 넘친다.
+        scrollable: true,
         title: const Text('도서관 이름'),
         content: TextField(
           controller: controller,
@@ -208,6 +210,8 @@ class SettingsScreen extends ConsumerWidget {
     );
 
     if (confirmed != true) return;
+    // 확인 다이얼로그를 await한 사이 화면이 사라졌을 수 있다.
+    if (!context.mounted) return;
 
     // 3. 내보내기 실행
     final messenger = ScaffoldMessenger.of(context);
