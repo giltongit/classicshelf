@@ -28,11 +28,24 @@ class SettingsScreen extends ConsumerWidget {
     final notifier = ref.read(homeBackgroundProvider.notifier);
     final authAsync = ref.watch(authNotifierProvider);
     final authService = ref.read(authServiceProvider);
+    final libraryName = switch (ref.watch(libraryNameProvider)) {
+      AsyncData(:final value) => value,
+      _ => null,
+    };
 
     return Scaffold(
       appBar: AppBar(title: const Text('설정')),
       body: ListView(
         children: [
+          const _SectionHeader('도서관 이름'),
+          _SettingsTile(
+            icon: Icons.local_library_outlined,
+            title: libraryName ?? '나의 도서관',
+            subtitle: libraryName == null
+                ? '홈 화면 상단에 표시할 도서관 이름을 설정합니다'
+                : '탭하여 도서관 이름을 변경합니다',
+            onTap: () => _editLibraryName(context, ref, libraryName),
+          ),
           const _SectionHeader('홈 배경 이미지'),
           Padding(
             padding:
@@ -111,6 +124,42 @@ class SettingsScreen extends ConsumerWidget {
                 ),
               ],
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _editLibraryName(
+      BuildContext context, WidgetRef ref, String? current) async {
+    final controller = TextEditingController(text: current ?? '');
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('도서관 이름'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLength: 30,
+          decoration: const InputDecoration(
+            hintText: '나의 도서관',
+            counterText: '',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('취소'),
+          ),
+          TextButton(
+            onPressed: () {
+              final name = controller.text.trim();
+              Navigator.pop(ctx);
+              ref
+                  .read(libraryNameProvider.notifier)
+                  .setLibraryName(name.isEmpty ? null : name);
+            },
+            child: const Text('확인'),
           ),
         ],
       ),

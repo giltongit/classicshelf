@@ -54,41 +54,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     }
   }
 
-  void _startEditing(String? current) {
-    final controller = TextEditingController(text: current ?? '');
-    showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('도서관 이름'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          maxLength: 30,
-          decoration: const InputDecoration(
-            hintText: '나의 도서관',
-            counterText: '',
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('취소'),
-          ),
-          TextButton(
-            onPressed: () {
-              final name = controller.text.trim();
-              Navigator.pop(ctx);
-              ref.read(libraryNameProvider.notifier).setLibraryName(
-                    name.isEmpty ? null : name,
-                  );
-            },
-            child: const Text('확인'),
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final books = switch (ref.watch(booksProvider)) {
@@ -178,74 +143,39 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
   }
 
   Widget _buildHeader(String? libraryName) {
+    // 편집 기능은 설정 화면으로 이동. 홈은 표시 전용.
+    // 작은 "묵책서가" 위 + 아래에 사용자가 설정한 도서관 이름(미설정 시 "나의 도서관").
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Expanded(
-              child: libraryName != null
-                  ? Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          '나의 도서관',
-                          style: TextStyle(
-                            color: Color(0xFFAA9F8F),
-                            fontSize: 12,
-                            shadows: [
-                              Shadow(
-                                color: Colors.black54,
-                                blurRadius: 8,
-                                offset: Offset(0, 1),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Text(
-                          libraryName,
-                          style: const TextStyle(
-                            color: AppColors.cream,
-                            fontSize: 22,
-                            fontWeight: FontWeight.bold,
-                            shadows: [
-                              Shadow(
-                                color: Colors.black54,
-                                blurRadius: 8,
-                                offset: Offset(0, 1),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    )
-                  : const Text(
-                      '나의 도서관',
-                      style: TextStyle(
-                        color: Color(0xFFAA9F8F),
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                        shadows: [
-                          Shadow(
-                            color: Colors.black54,
-                            blurRadius: 8,
-                            offset: Offset(0, 1),
-                          ),
-                        ],
-                      ),
-                    ),
-            ),
-            GestureDetector(
-              onTap: () => _startEditing(libraryName),
-              behavior: HitTestBehavior.opaque,
-              child: const Padding(
-                padding: EdgeInsets.all(8),
-                child: Icon(Icons.edit_outlined,
-                    size: 16, color: Color(0xFFAA9F8F)),
+        const Text(
+          '묵책서가',
+          style: TextStyle(
+            color: Color(0xFFAA9F8F),
+            fontSize: 12,
+            shadows: [
+              Shadow(
+                color: Colors.black54,
+                blurRadius: 8,
+                offset: Offset(0, 1),
               ),
-            ),
-          ],
+            ],
+          ),
+        ),
+        Text(
+          libraryName ?? '나의 도서관',
+          style: const TextStyle(
+            color: AppColors.cream,
+            fontSize: 22,
+            fontWeight: FontWeight.bold,
+            shadows: [
+              Shadow(
+                color: Colors.black54,
+                blurRadius: 8,
+                offset: Offset(0, 1),
+              ),
+            ],
+          ),
         ),
       ],
     );
