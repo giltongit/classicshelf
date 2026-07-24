@@ -9,6 +9,7 @@ import '../models/book.dart';
 import '../providers/providers.dart';
 import '../theme/app_theme.dart';
 import '../utils/kdc_genre.dart';
+import '../utils/my_tags.dart';
 
 class BookDetailScreen extends ConsumerWidget {
   final int localId;
@@ -295,23 +296,31 @@ class _BookDetailBody extends StatelessWidget {
                : b.medium == 'ebook' ? '전자책'
                : b.medium == 'audio' ? '오디오북'
                : b.medium),
-      ('장르',    kdcToGenre(b.kdc)?.pathLabel),
     ];
-    return _filterInfoRows(pairs);
+    final rows = _filterInfoRows(pairs);
+
+    // 장르는 "경로 + 내 분류 칩"을 한 줄에 얹으므로 _InfoRow로 표현할 수 없다.
+    final path = kdcToGenre(b.kdc)?.pathLabel;
+    final tags = parseMyTags(b.genre);
+    if (path != null || tags.isNotEmpty) {
+      rows.add(_GenreInfoRow(path: path, tags: tags));
+    }
+    return rows;
   }
 
-  // 태그·총 페이지 — 장르 아래 버튼 다음에 이어서 표시된다.
+  // 총 페이지 — 장르 아래 버튼 다음에 이어서 표시된다.
   List<Widget> _infoRowsTail(Book b) {
     final pairs = <(String, String?)>[
-      ('태그',    b.genre),
       ('총 페이지', b.pageCount?.toString()),
     ];
     return _filterInfoRows(pairs);
   }
 
+  // map<Widget>: 반환 리스트에 _GenreInfoRow를 덧붙이므로 런타임 타입이
+  // List<_InfoRow>로 좁혀지면 안 된다.
   List<Widget> _filterInfoRows(List<(String, String?)> pairs) => pairs
       .where((p) => p.$2 != null && p.$2!.isNotEmpty)
-      .map((p) => _InfoRow(label: p.$1, value: p.$2!))
+      .map<Widget>((p) => _InfoRow(label: p.$1, value: p.$2!))
       .toList();
 
   Future<void> _confirmDelete(BuildContext context) async {
@@ -422,6 +431,60 @@ class _StatusToggleRow extends StatelessWidget {
           children: const [Text('소장'), Text('희망'), Text('대여')],
         ),
       ],
+    );
+  }
+}
+
+/// 장르 경로와 "내 분류" 칩을 한 줄에 얹는다. 예: `문학 > 한국소설 · #SF #디스토피아`
+/// 미분류(kdc 없음)면 칩만 표시한다 (§26).
+class _GenreInfoRow extends StatelessWidget {
+  final String? path;
+  final List<String> tags;
+  const _GenreInfoRow({required this.path, required this.tags});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(
+            width: 76,
+            child: Text('장르',
+                style: TextStyle(color: AppColors.muted, fontSize: 13)),
+          ),
+          Expanded(
+            child: Wrap(
+              spacing: 6,
+              runSpacing: 4,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                if (path != null)
+                  Text(path!,
+                      style: const TextStyle(
+                          color: AppColors.cream, fontSize: 13)),
+                if (path != null && tags.isNotEmpty)
+                  const Text('·',
+                      style:
+                          TextStyle(color: AppColors.muted, fontSize: 13)),
+                ...tags.map((t) => Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: AppColors.surface2,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: AppColors.dim),
+                      ),
+                      child: Text('#$t',
+                          style: const TextStyle(
+                              color: AppColors.gold, fontSize: 12)),
+                    )),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

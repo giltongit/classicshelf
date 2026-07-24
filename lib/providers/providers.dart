@@ -12,6 +12,7 @@ import '../repositories/book_repository_impl.dart';
 import '../repositories/profile_repository.dart';
 import '../repositories/profile_repository_impl.dart';
 import '../services/auth_service.dart';
+import '../utils/my_tags.dart';
 
 final supabaseClientProvider = Provider<SupabaseClient>((ref) {
   return Supabase.instance.client;
@@ -101,6 +102,23 @@ String? bookGroupKey(String title) {
   }
   if (code >= 48 && code <= 57) return trimmed[0];
   return null;
+}
+
+/// "내 분류" 태그를 kdc 대분류 키('0'~'9')별로 모은다 — 태그 입력 자동완성 소스.
+///
+/// 같은 대분류의 다른 책이 이미 쓴 태그를 제안해, 자유 텍스트인데도 표기가
+/// 흩어지는 것을 억제한다 (§26 "장르 종속 — 맥락 자동완성").
+/// kdc가 없는 책(미분류)의 태그는 빈 문자열 키에 모인다.
+Map<String, Set<String>> myTagsByKdcMain(List<Book> books) {
+  final result = <String, Set<String>>{};
+  for (final b in books) {
+    final tags = parseMyTags(b.genre);
+    if (tags.isEmpty) continue;
+    final kdc = b.kdc?.trim();
+    final key = (kdc != null && kdc.isNotEmpty) ? kdc[0] : '';
+    result.putIfAbsent(key, () => <String>{}).addAll(tags);
+  }
+  return result;
 }
 
 List<Book> applyBookFilterAndSort(List<Book> books, BookFilter filter) {

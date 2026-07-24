@@ -12,6 +12,8 @@ import '../repositories/book_repository.dart';
 import '../services/cover_photo_service.dart';
 import '../services/library_search_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/kdc_genre.dart';
+import '../utils/my_tags.dart';
 
 class AddBookScreen extends ConsumerStatefulWidget {
   /// null이면 신규 추가, 값이 있으면 수정 모드.
@@ -43,7 +45,6 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
   late final TextEditingController _isbn;
   late final TextEditingController _publisher;
   late final TextEditingController _year;
-  late final TextEditingController _genre;
   late final TextEditingController _location;
   late final TextEditingController _callNumber;
   late final TextEditingController _kdcCtrl;
@@ -62,6 +63,23 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
   List<String> _locationSuggestions = [];
   late final FocusNode _locationFocusNode;
 
+  // ── 장르(KDC 구조화 입력) ────────────────────────────────────────────────
+  /// 대분류 키('0'~'9'). null이면 미분류.
+  String? _genreMain;
+  /// 중분류 키(2자리, 예 '81'). null이면 대분류까지만.
+  String? _genreDiv;
+
+  /// 사용자가 드롭다운을 실제로 **바꿨는지**. false면 저장 시 기존 정밀 코드
+  /// (813.6 등)를 그대로 보존한다 — 코스한 드롭다운이 소수점 분류를 뭉개지
+  /// 않게 하는 불변식 (§26 "정밀 코드 보존").
+  bool _genreChanged = false;
+
+  // ── "내 분류" 태그 ───────────────────────────────────────────────────────
+  List<String> _myTags = [];
+  late final TextEditingController _myTagCtrl;
+  late final FocusNode _myTagFocusNode;
+  List<String> _myTagSuggestions = [];
+
   bool get _isEdit => widget.editBook != null;
 
   @override
@@ -74,13 +92,26 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
     _isbn       = TextEditingController(text: b?.isbn      ?? s?.isbn      ?? '');
     _publisher  = TextEditingController(text: b?.publisher ?? s?.publisher ?? '');
     _year       = TextEditingController(text: b?.year      ?? s?.year      ?? '');
-    _genre      = TextEditingController(text: b?.genre     ?? s?.genre     ?? '');
     _location   = TextEditingController(text: b?.location  ?? '');
     _callNumber = TextEditingController(text: b?.callNumber ?? '');
     _kdcCtrl    = TextEditingController(text: b?.kdc ?? '');
     _ddcCtrl    = TextEditingController(text: b?.ddc ?? '');
     _lcCtrl     = TextEditingController(text: b?.lc  ?? '');
     _review     = TextEditingController(text: b?.review    ?? '');
+
+    // 불변식 1 — 드롭다운은 빈 칸이 아니라 "지금 이 책은 이렇게 분류돼 있다"를
+    // 보여주고 수정하는 형태여야 한다.
+    _syncGenreFromKdc();
+    _myTags = parseMyTags(b?.genre ?? s?.genre);
+    _myTagCtrl = TextEditingController();
+    _myTagFocusNode = FocusNode();
+    _myTagFocusNode.addListener(() {
+      if (!_myTagFocusNode.hasFocus && mounted) {
+        Future.delayed(const Duration(milliseconds: 150), () {
+          if (mounted) setState(() => _myTagSuggestions = []);
+        });
+      }
+    });
 
     if (_kdcCtrl.text.isEmpty) {
       final isbn = s?.isbn13 ?? s?.isbn10 ?? b?.isbn;
@@ -110,7 +141,6 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
     _isbn.dispose();
     _publisher.dispose();
     _year.dispose();
-    _genre.dispose();
     _location.dispose();
     _callNumber.dispose();
     _kdcCtrl.dispose();
@@ -118,6 +148,8 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
     _lcCtrl.dispose();
     _review.dispose();
     _locationFocusNode.dispose();
+    _myTagCtrl.dispose();
+    _myTagFocusNode.dispose();
     super.dispose();
   }
 
@@ -138,7 +170,6 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
       'isbn'       => _isbn.text.trim(),
       'publisher'  => _publisher.text.trim(),
       'year'       => _year.text.trim(),
-      'genre'      => _genre.text.trim(),
       'location'   => _location.text.trim(),
       'callNumber' => _callNumber.text.trim(),
       'review'     => _review.text.trim(),
@@ -151,9 +182,111 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
     try {
       final classNo = await LibrarySearchService().getClassNo(isbn);
       if (classNo != null && classNo.isNotEmpty && mounted) {
-        setState(() => _kdcCtrl.text = classNo);
+        setState(() {
+          _kdcCtrl.text = classNo;
+          // 자동 취득분도 드롭다운에 반영한다. _genreChanged는 건드리지 않으므로
+          // 사용자가 손대지 않는 한 저장 시 이 정밀 코드가 그대로 보존된다.
+          _syncGenreFromKdc();
+        });
       }
     } catch (_) {}
+  }
+
+  // ── 장르 ─────────────────────────────────────────────────────────────────
+
+  /// 원시 kdc 텍스트에서 드롭다운 선택값을 역매핑한다.
+  /// 매핑에 없는 대분류/중분류는 null로 둬서 없는 항목을 고르지 않게 한다.
+  void _syncGenreFromKdc() {
+    final raw = _kdcCtrl.text.trim();
+    if (raw.isEmpty) {
+      _genreMain = null;
+      _genreDiv = null;
+      return;
+    }
+    final mainKey = raw[0];
+    _genreMain =
+        kdcMainClassesOrdered.any((e) => e.key == mainKey) ? mainKey : null;
+    if (_genreMain == null || raw.length < 2) {
+      _genreDiv = null;
+      return;
+    }
+    final divKey = raw.substring(0, 2);
+    _genreDiv = kdcDivisionsOf(_genreMain!).any((e) => e.key == divKey)
+        ? divKey
+        : null;
+  }
+
+  /// 저장할 kdc 값. 불변식 2 — 드롭다운을 실제로 바꾼 경우에만 프리픽스로
+  /// 재작성하고, 그렇지 않으면 원시 입력(정밀 코드)을 그대로 쓴다.
+  String? _resolveKdc() {
+    if (!_genreChanged) {
+      final raw = _kdcCtrl.text.trim();
+      return raw.isEmpty ? null : raw;
+    }
+    if (_genreMain == null) return null;
+    return _genreDiv ?? _genreMain;
+  }
+
+  void _onGenreMainChanged(String? key) {
+    if (key == _genreMain) return;
+    setState(() {
+      _genreMain = key;
+      _genreDiv = null; // 대분류가 바뀌면 중분류는 의미를 잃는다
+      _genreChanged = true;
+      _myTagSuggestions = [];
+    });
+  }
+
+  void _onGenreDivChanged(String? key) {
+    if (key == _genreDiv) return;
+    setState(() {
+      _genreDiv = key;
+      _genreChanged = true;
+    });
+  }
+
+  /// 접이식 고급 영역의 원시 KDC 입력. 더 정밀하므로 드롭다운보다 우선한다 —
+  /// 여기를 건드리면 드롭다운을 다시 맞추고 "변경됨" 플래그를 되돌린다.
+  void _onRawKdcChanged(String _) {
+    setState(() {
+      _syncGenreFromKdc();
+      _genreChanged = false;
+    });
+  }
+
+  // ── "내 분류" 태그 ───────────────────────────────────────────────────────
+
+  void _onMyTagChanged(String value) {
+    final books = ref.read(booksProvider).value ?? [];
+    final byMain = myTagsByKdcMain(books);
+    // 대분류 미선택이면 전체에서, 선택돼 있으면 그 대분류로 스코프를 좁힌다.
+    final pool = _genreMain == null
+        ? byMain.values.expand((s) => s).toSet()
+        : (byMain[_genreMain] ?? const <String>{});
+    final q = value.trim().toLowerCase();
+    final filtered = pool
+        .where((t) => !_myTags.contains(t))
+        .where((t) => q.isEmpty || t.toLowerCase().contains(q))
+        .toList()
+      ..sort();
+    setState(() => _myTagSuggestions = filtered);
+  }
+
+  void _addMyTag(String raw) {
+    final tag = raw.trim();
+    if (tag.isEmpty || _myTags.contains(tag)) {
+      _myTagCtrl.clear();
+      return;
+    }
+    setState(() {
+      _myTags = [..._myTags, tag];
+      _myTagCtrl.clear();
+      _myTagSuggestions = [];
+    });
+  }
+
+  void _removeMyTag(String tag) {
+    setState(() => _myTags = _myTags.where((t) => t != tag).toList());
   }
 
   Future<void> _save() async {
@@ -195,7 +328,7 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
           review:     _review.text.trim(),
           pageCount:  base.pageCount,
           year:       _year.text.trim().isEmpty ? null : _year.text.trim(),
-          genre:      _genre.text.trim().isEmpty ? null : _genre.text.trim(),
+          genre:      joinMyTags(_myTags),
           publisher:  _publisher.text.trim().isEmpty ? null : _publisher.text.trim(),
           location:   _location.text.trim().isEmpty ? null : _location.text.trim(),
           priorityRead: base.priorityRead,
@@ -203,7 +336,7 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
           medium:     _medium,
           language:   base.language,
           callNumber: _callNumber.text.trim().isEmpty ? null : _callNumber.text.trim(),
-          kdc: _kdcCtrl.text.trim().isEmpty ? null : _kdcCtrl.text.trim(),
+          kdc: _resolveKdc(),
           ddc: _ddcCtrl.text.trim().isEmpty ? null : _ddcCtrl.text.trim(),
           lc:  _lcCtrl.text.trim().isEmpty  ? null : _lcCtrl.text.trim(),
           acquiredAt: _acquiredAt,
@@ -223,10 +356,10 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
           isbn:       _nonEmpty('isbn'),
           publisher:  _nonEmpty('publisher'),
           year:       _nonEmpty('year'),
-          genre:      _nonEmpty('genre'),
+          genre:      joinMyTags(_myTags),
           location:   _nonEmpty('location'),
           callNumber: _nonEmpty('callNumber'),
-          kdc: _kdcCtrl.text.trim().isEmpty ? null : _kdcCtrl.text.trim(),
+          kdc: _resolveKdc(),
           ddc: _ddcCtrl.text.trim().isEmpty ? null : _ddcCtrl.text.trim(),
           lc:  _lcCtrl.text.trim().isEmpty  ? null : _lcCtrl.text.trim(),
           review:     _nonEmpty('review'),
@@ -415,8 +548,19 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
                 _Field(controller: _isbn,      label: 'ISBN',   keyboardType: TextInputType.number),
                 _Field(controller: _publisher, label: '출판사'),
                 _Field(controller: _year,      label: '출판연도', keyboardType: TextInputType.number),
-                _Field(controller: _genre,     label: '태그 (자유 입력)',
-                    hint: '예) 힐링, 인생책, 다시 읽고 싶은'),
+                _GenreSection(
+                  mainKey: _genreMain,
+                  divKey: _genreDiv,
+                  onMainChanged: _onGenreMainChanged,
+                  onDivChanged: _onGenreDivChanged,
+                  tags: _myTags,
+                  tagController: _myTagCtrl,
+                  tagFocusNode: _myTagFocusNode,
+                  tagSuggestions: _myTagSuggestions,
+                  onTagChanged: _onMyTagChanged,
+                  onTagSubmitted: _addMyTag,
+                  onTagRemoved: _removeMyTag,
+                ),
                 _LocationField(
                   controller: _location,
                   focusNode: _locationFocusNode,
@@ -430,8 +574,6 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
                 ),
                 _Field(controller: _callNumber, label: '청구기호',
                     hint: '예) 813.6-한강-채'),
-                _Field(controller: _kdcCtrl, label: 'KDC (한국십진분류기호)',
-                    hint: '예) 813.6'),
                 GestureDetector(
                   onTap: () => setState(() => _classExpanded = !_classExpanded),
                   child: Padding(
@@ -439,9 +581,9 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
-                        Text(
-                          'DDC / LC (선택)',
-                          style: const TextStyle(color: AppColors.muted, fontSize: 13),
+                        const Text(
+                          '분류기호 직접 입력 (선택)',
+                          style: TextStyle(color: AppColors.muted, fontSize: 13),
                         ),
                         Icon(
                           _classExpanded ? Icons.expand_less : Icons.expand_more,
@@ -453,6 +595,9 @@ class _AddBookScreenState extends ConsumerState<AddBookScreen> {
                   ),
                 ),
                 if (_classExpanded) ...[
+                  // 드롭다운보다 정밀하므로 여기 입력이 우선한다 (§26 "정밀 코드 직접 입력").
+                  _Field(controller: _kdcCtrl, label: 'KDC (한국십진분류기호)',
+                      hint: '예) 813.6', onChanged: _onRawKdcChanged),
                   _Field(controller: _ddcCtrl, label: 'DDC (듀이십진분류법)',
                       hint: '예) 895.73'),
                   _Field(controller: _lcCtrl, label: 'LC (미국의회도서관분류법)',
@@ -597,6 +742,166 @@ class _CoverPicker extends StatelessWidget {
   }
 }
 
+/// 장르(KDC 대분류/중분류 드롭다운) + 그에 종속된 "내 분류" 태그 입력.
+///
+/// 한 섹션에 묶는 것은 §26의 "장르 종속 — 그룹핑" 결정이다. 태그 제안은
+/// 선택된 대분류로 스코프가 좁혀지므로, 두 입력이 붙어 있어야 그 관계가 읽힌다.
+class _GenreSection extends StatelessWidget {
+  final String? mainKey;
+  final String? divKey;
+  final ValueChanged<String?> onMainChanged;
+  final ValueChanged<String?> onDivChanged;
+
+  final List<String> tags;
+  final TextEditingController tagController;
+  final FocusNode tagFocusNode;
+  final List<String> tagSuggestions;
+  final ValueChanged<String> onTagChanged;
+  final ValueChanged<String> onTagSubmitted;
+  final ValueChanged<String> onTagRemoved;
+
+  const _GenreSection({
+    required this.mainKey,
+    required this.divKey,
+    required this.onMainChanged,
+    required this.onDivChanged,
+    required this.tags,
+    required this.tagController,
+    required this.tagFocusNode,
+    required this.tagSuggestions,
+    required this.onTagChanged,
+    required this.onTagSubmitted,
+    required this.onTagRemoved,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final divisions = mainKey == null
+        ? const <MapEntry<String, String>>[]
+        : kdcDivisionsOf(mainKey!);
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('장르',
+              style: TextStyle(color: AppColors.muted, fontSize: 13)),
+          const SizedBox(height: 8),
+          DropdownButtonFormField<String?>(
+            initialValue: mainKey,
+            isExpanded: true,
+            dropdownColor: AppColors.surface2,
+            style: const TextStyle(color: AppColors.cream, fontSize: 14),
+            decoration: const InputDecoration(labelText: '대분류'),
+            items: [
+              const DropdownMenuItem<String?>(
+                value: null,
+                child: Text('선택 안 함',
+                    style: TextStyle(color: AppColors.muted, fontSize: 14)),
+              ),
+              ...kdcMainClassesOrdered.map(
+                (e) => DropdownMenuItem<String?>(
+                  value: e.key,
+                  child: Text('${e.key} ${e.value}'),
+                ),
+              ),
+            ],
+            onChanged: onMainChanged,
+          ),
+          const SizedBox(height: 12),
+          DropdownButtonFormField<String?>(
+            initialValue: divKey,
+            isExpanded: true,
+            dropdownColor: AppColors.surface2,
+            style: const TextStyle(color: AppColors.cream, fontSize: 14),
+            decoration: InputDecoration(
+              labelText: '중분류 (선택)',
+              // 대분류가 없으면 고를 중분류도 없다.
+              enabled: mainKey != null,
+            ),
+            items: [
+              const DropdownMenuItem<String?>(
+                value: null,
+                child: Text('선택 안 함',
+                    style: TextStyle(color: AppColors.muted, fontSize: 14)),
+              ),
+              ...divisions.map(
+                (e) => DropdownMenuItem<String?>(
+                  value: e.key,
+                  child: Text('${e.key} ${e.value}'),
+                ),
+              ),
+            ],
+            onChanged: mainKey == null ? null : onDivChanged,
+          ),
+          const SizedBox(height: 14),
+          if (tags.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: tags
+                    .map((t) => Chip(
+                          label: Text(t),
+                          labelStyle: const TextStyle(
+                              color: AppColors.cream, fontSize: 12),
+                          backgroundColor: AppColors.surface2,
+                          side: const BorderSide(color: AppColors.dim),
+                          deleteIcon:
+                              const Icon(Icons.close, size: 15),
+                          deleteIconColor: AppColors.muted,
+                          onDeleted: () => onTagRemoved(t),
+                          materialTapTargetSize:
+                              MaterialTapTargetSize.shrinkWrap,
+                          visualDensity: VisualDensity.compact,
+                        ))
+                    .toList(),
+              ),
+            ),
+          TextFormField(
+            controller: tagController,
+            focusNode: tagFocusNode,
+            onChanged: onTagChanged,
+            onFieldSubmitted: onTagSubmitted,
+            textInputAction: TextInputAction.done,
+            style: const TextStyle(color: AppColors.cream),
+            decoration: InputDecoration(
+              labelText: '내 분류',
+              hintText: '예) SF, 디스토피아 — 입력 후 완료',
+              hintStyle:
+                  const TextStyle(color: AppColors.muted, fontSize: 13),
+              suffixIcon: IconButton(
+                icon: const Icon(Icons.add, size: 20, color: AppColors.muted),
+                onPressed: () => onTagSubmitted(tagController.text),
+              ),
+            ),
+          ),
+          if (tagSuggestions.isNotEmpty)
+            Material(
+              elevation: 4,
+              color: AppColors.surface2,
+              borderRadius: BorderRadius.circular(8),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: tagSuggestions.take(5).map((s) {
+                  return ListTile(
+                    dense: true,
+                    title: Text(s,
+                        style: const TextStyle(
+                            color: AppColors.cream, fontSize: 13)),
+                    onTap: () => onTagSubmitted(s),
+                  );
+                }).toList(),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
 class _LocationField extends StatelessWidget {
   final TextEditingController controller;
   final FocusNode focusNode;
@@ -659,6 +964,7 @@ class _Field extends StatelessWidget {
   final FormFieldValidator<String>? validator;
   final TextInputType? keyboardType;
   final int maxLines;
+  final ValueChanged<String>? onChanged;
 
   const _Field({
     required this.controller,
@@ -667,6 +973,7 @@ class _Field extends StatelessWidget {
     this.validator,
     this.keyboardType,
     this.maxLines = 1,
+    this.onChanged,
   });
 
   @override
@@ -678,6 +985,7 @@ class _Field extends StatelessWidget {
         validator: validator,
         keyboardType: keyboardType,
         maxLines: maxLines,
+        onChanged: onChanged,
         style: const TextStyle(color: AppColors.cream),
         decoration: InputDecoration(
           labelText: label,
