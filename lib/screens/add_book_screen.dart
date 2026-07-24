@@ -520,7 +520,11 @@ class _CoverPicker extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Center(
-      child: Column(
+      // 썸네일 오른쪽에 [카메라](위)/[갤러리](아래)를 세로 배치하고, Row의
+      // crossAxisAlignment.end로 버튼 스택 하단을 썸네일 하단에 맞춘다.
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           GestureDetector(
             onTap: onCamera,
@@ -552,21 +556,40 @@ class _CoverPicker extends StatelessWidget {
                         ),
             ),
           ),
-          const SizedBox(height: 8),
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextButton.icon(
-                onPressed: onCamera,
-                icon: const Icon(Icons.camera_alt_outlined, size: 16),
-                label: const Text('카메라'),
-              ),
-              TextButton.icon(
-                onPressed: onGallery,
-                icon: const Icon(Icons.photo_library_outlined, size: 16),
-                label: const Text('갤러리'),
-              ),
-            ],
+          const SizedBox(width: 14),
+          // IntrinsicWidth: mainAxisSize.min Row가 넘기는 무한 폭 제약을
+          // "가장 넓은 버튼 기준"으로 확정 → stretch(두 버튼 동일 폭)가 안전.
+          IntrinsicWidth(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: onCamera,
+                  icon: const Icon(Icons.camera_alt_outlined, size: 16),
+                  label: const Text('카메라'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.gold,
+                    side: BorderSide(
+                        color: AppColors.gold.withValues(alpha: 0.5)),
+                    padding: const EdgeInsets.symmetric(
+                        vertical: 10, horizontal: 12),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  onPressed: onGallery,
+                  icon: const Icon(Icons.photo_library_outlined, size: 16),
+                  label: const Text('갤러리'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.muted,
+                    side: const BorderSide(color: AppColors.dim),
+                    padding: const EdgeInsets.symmetric(
+                        vertical: 10, horizontal: 12),
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),

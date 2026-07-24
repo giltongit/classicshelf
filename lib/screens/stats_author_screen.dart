@@ -133,11 +133,12 @@ class _AuthorBooksSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
+    // ListTile/InkWell은 가장 가까운 Material에 잉크 효과를 그린다.
+    // Container 배경을 쓰면 그 효과가 가려지므로 Material로 배경을 칠한다.
+    return Material(
+      color: AppColors.surface,
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+      clipBehavior: Clip.antiAlias,
       child: Column(
         children: [
           // 드래그 핸들
