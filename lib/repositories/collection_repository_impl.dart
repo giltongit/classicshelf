@@ -93,19 +93,18 @@ class CollectionRepositoryImpl implements CollectionRepository {
             _albumToCompanion(album, userId),
           );
 
-      // 하위 replace: 기존 삭제 후 재삽입
-      await (_db.delete(_db.compositions)
-            ..where((t) => t.albumId.equals(album.id)))
-          .go();
-      await (_db.delete(_db.albumPerformers)
-            ..where((t) => t.albumId.equals(album.id)))
-          .go();
+      // 하위 replace: 기존 삭제 후 재삽입.
       // movements/composition_performers는 compositions FK로 묶이나,
       // 로컬 FK PRAGMA를 끈 상태(스키마 결정)라 cascade가 자동 적용되지 않는다.
       // → 이 앨범에 속한 composition id들을 모아 명시적으로 지운다.
-      final compIds = album.compositions.map((c) => c.id).toList();
+      // 수집은 반드시 compositions 삭제 *전에* — 삭제 후면 기존 id를 못 읽어
+      // 이번 편집에서 제거된 수록곡의 하위가 고아로 남는다.
+      // (_applyRemoteAlbumToLocal의 하위 replace와 같은 순서)
       final oldCompIds = await _albumCompositionIds(album.id);
-      final allCompIds = {...compIds, ...oldCompIds}.toList();
+      final allCompIds = {
+        ...oldCompIds,
+        ...album.compositions.map((c) => c.id),
+      }.toList();
       if (allCompIds.isNotEmpty) {
         await (_db.delete(_db.movements)
               ..where((t) => t.compositionId.isIn(allCompIds)))
@@ -114,6 +113,12 @@ class CollectionRepositoryImpl implements CollectionRepository {
               ..where((t) => t.compositionId.isIn(allCompIds)))
             .go();
       }
+      await (_db.delete(_db.compositions)
+            ..where((t) => t.albumId.equals(album.id)))
+          .go();
+      await (_db.delete(_db.albumPerformers)
+            ..where((t) => t.albumId.equals(album.id)))
+          .go();
 
       // 앨범 기본 연주자 재삽입
       for (final p in album.defaultPerformers) {
