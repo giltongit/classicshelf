@@ -1,3 +1,17 @@
+// =============================================================================
+// book_detail_screen.dart — 앨범 상세 (2B-1 재작성)
+//   book 시절의 도서 상세를 앨범 애그리게이트 상세로 바꿨다.
+//   파일명은 라우팅 참조를 줄이려고 유지하되 클래스는 AlbumDetailScreen.
+//
+// 표시 구조 = 3단 계층 (§3-1):
+//   앨범 → 수록곡(Composition) → 악장(Movement)
+//
+// 연주자 표시는 "방식 2"(§3-2): 앨범 기본 연주자를 헤더에 한 번만 그리고,
+//   수록곡은 override가 있을 때만 그 역할만 곡 아래 덧붙인다.
+//   effectivePerformers()로 펼쳐 전부 반복 출력하지 않는다 — 무엇이 상속이고
+//   무엇이 예외인지 화면에서 구분되지 않기 때문.
+// =============================================================================
+
 import 'dart:io';
 
 import 'package:cached_network_image/cached_network_image.dart';
@@ -5,54 +19,72 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../models/book.dart';
+import '../models/album.dart';
 import '../providers/providers.dart';
 import '../theme/app_theme.dart';
-import '../utils/kdc_genre.dart';
-import '../utils/my_tags.dart';
 
-class BookDetailScreen extends ConsumerWidget {
-  final int localId;
-  const BookDetailScreen({super.key, required this.localId});
+/// PerformerRole 한글 라벨 (§3-2)
+String _roleLabel(PerformerRole role) => switch (role) {
+      PerformerRole.conductor => '지휘',
+      PerformerRole.orchestra => '관현악',
+      PerformerRole.soloist => '독주',
+      PerformerRole.ensemble => '앙상블',
+      PerformerRole.vocalist => '성악',
+      PerformerRole.unknown => '연주',
+    };
+
+String _formatDuration(int seconds) {
+  final m = seconds ~/ 60;
+  final s = seconds % 60;
+  return '$m:${s.toString().padLeft(2, '0')}';
+}
+
+class AlbumDetailScreen extends ConsumerWidget {
+  final String albumId;
+  const AlbumDetailScreen({super.key, required this.albumId});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final booksAsync = ref.watch(booksProvider);
+    final albumAsync = ref.watch(albumDetailProvider(albumId));
 
-    return booksAsync.when(
+    return albumAsync.when(
       loading: () => Scaffold(
         appBar: AppBar(),
-        body: const Center(child: CircularProgressIndicator(color: AppColors.gold)),
+        body: const Center(
+            child: CircularProgressIndicator(color: AppColors.gold)),
       ),
       error: (e, _) => Scaffold(
         appBar: AppBar(title: const Text('오류')),
         body: Center(
-          child: Text('불러오기 실패: $e', style: const TextStyle(color: AppColors.red)),
+          child: Text('불러오기 실패: $e',
+              style: const TextStyle(color: AppColors.red)),
         ),
       ),
-      data: (books) {
-        final book = books.where((b) => b.localId == localId).firstOrNull;
-        if (book == null) {
+      data: (album) {
+        if (album == null) {
           return Scaffold(
-            appBar: AppBar(title: const Text('책 정보')),
+            appBar: AppBar(title: const Text('음반 정보')),
             body: const Center(
-              child: Text('책을 찾을 수 없습니다', style: TextStyle(color: AppColors.muted)),
+              child: Text('앨범을 찾을 수 없습니다',
+                  style: TextStyle(color: AppColors.muted)),
             ),
           );
         }
-        return _BookDetailBody(book: book, ref: ref);
+        return _AlbumDetailBody(album: album);
       },
     );
   }
 }
 
-class _BookDetailBody extends StatelessWidget {
-  final Book book;
-  final WidgetRef ref;
-  const _BookDetailBody({required this.book, required this.ref});
+class _AlbumDetailBody extends ConsumerWidget {
+  final Album album;
+  const _AlbumDetailBody({required this.album});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final compositions = [...album.compositions]
+      ..sort((a, b) => a.seq.compareTo(b.seq));
+
     return Scaffold(
       body: CustomScrollView(
         slivers: [
@@ -61,25 +93,14 @@ class _BookDetailBody extends StatelessWidget {
             pinned: true,
             backgroundColor: AppColors.surface,
             foregroundColor: AppColors.cream,
-            leading: Container(
-              margin: const EdgeInsets.symmetric(
-                  vertical: 8, horizontal: 4),
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.35),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: IconButton(
-                icon: const Icon(Icons.arrow_back),
-                padding: const EdgeInsets.all(6),
-                constraints: const BoxConstraints(),
-                iconSize: 22,
-                onPressed: () => Navigator.of(context).pop(),
-              ),
+            leading: _RoundAction(
+              icon: Icons.arrow_back,
+              onPressed: () => Navigator.of(context).pop(),
             ),
             flexibleSpace: FlexibleSpaceBar(
               titlePadding: const EdgeInsets.fromLTRB(56, 0, 100, 14),
               title: Text(
-                book.title,
+                album.title,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
@@ -92,7 +113,7 @@ class _BookDetailBody extends StatelessWidget {
               background: Stack(
                 fit: StackFit.expand,
                 children: [
-                  _buildCover(book.coverUrl),
+                  _buildCover(album.coverUrl),
                   const DecoratedBox(
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
@@ -106,55 +127,19 @@ class _BookDetailBody extends StatelessWidget {
               ),
             ),
             actions: [
-              Container(
-                margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.35),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: IconButton(
-                  icon: const Icon(Icons.edit_outlined),
-                  tooltip: '수정',
-                  onPressed: () => context.push('/add', extra: book),
-                  padding: const EdgeInsets.all(6),
-                  constraints: const BoxConstraints(),
-                  iconSize: 22,
-                ),
+              // TODO: 편집 (2B-2)
+              //   AddBookScreen이 스텁이라 지금은 안내 화면만 열린다.
+              //   등록 폼 구현 시 앨범 id를 넘겨 수정 모드로 진입시킬 것.
+              _RoundAction(
+                icon: Icons.edit_outlined,
+                tooltip: '수정',
+                onPressed: () => context.push('/add'),
               ),
-              if (book.isActiveOwned || book.isDisposed)
-                Container(
-                  margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.35),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: IconButton(
-                    icon: Icon(book.isDisposed
-                        ? Icons.replay
-                        : Icons.inventory_2_outlined),
-                    tooltip: book.isDisposed ? '처분 취소' : '처분하기',
-                    onPressed: () => book.isDisposed
-                        ? _undispose(context, ref, book)
-                        : _confirmDispose(context, ref, book),
-                    padding: const EdgeInsets.all(6),
-                    constraints: const BoxConstraints(),
-                    iconSize: 22,
-                  ),
-                ),
-              Container(
-                margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.35),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: IconButton(
-                  icon: const Icon(Icons.delete_outline, color: AppColors.red),
-                  tooltip: '삭제',
-                  onPressed: () => _confirmDelete(context),
-                  padding: const EdgeInsets.all(6),
-                  constraints: const BoxConstraints(),
-                  iconSize: 22,
-                ),
+              _RoundAction(
+                icon: Icons.delete_outline,
+                color: AppColors.red,
+                tooltip: '삭제',
+                onPressed: () => _confirmDelete(context, ref),
               ),
               const SizedBox(width: 4),
             ],
@@ -163,94 +148,50 @@ class _BookDetailBody extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(20, 20, 20, 48),
             sliver: SliverList(
               delegate: SliverChildListDelegate([
-                Text(
-                  book.author,
-                  style: const TextStyle(color: AppColors.gold, fontSize: 15),
-                ),
-                const SizedBox(height: 16),
+                _MetaLine(album: album),
+                const SizedBox(height: 12),
+                _StatusRow(album: album),
 
-                _StatusToggleRow(book: book, ref: ref),
-
-                if (book.isDisposed)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 8),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.inventory_2_outlined,
-                            size: 14, color: AppColors.muted),
-                        const SizedBox(width: 4),
-                        Text(
-                          '처분됨 · ${book.disposedAt!.year}년 ${book.disposedAt!.month}월 ${book.disposedAt!.day}일',
-                          style: const TextStyle(
-                              color: AppColors.muted, fontSize: 12),
-                        ),
-                      ],
-                    ),
+                // 앨범 기본 연주자 — 수록곡이 상속하는 값. 여기 한 번만 그린다.
+                if (album.defaultPerformers.isNotEmpty) ...[
+                  const SizedBox(height: 20),
+                  const _SectionLabel('연주'),
+                  const SizedBox(height: 8),
+                  ...album.defaultPerformers.map(
+                    (p) => _PerformerLine(performer: p),
                   ),
+                ],
 
-                if (book.isRead)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.check_circle_outline,
-                            size: 14, color: AppColors.muted),
-                        const SizedBox(width: 4),
-                        const Text('읽은 책',
-                            style: TextStyle(
-                                color: AppColors.muted, fontSize: 12)),
-                      ],
-                    ),
-                  ),
+                if ((album.location ?? '').isNotEmpty) ...[
+                  const SizedBox(height: 20),
+                  const _SectionLabel('보관 위치'),
+                  const SizedBox(height: 6),
+                  Text(album.location!,
+                      style: const TextStyle(color: AppColors.cream)),
+                ],
 
-                const SizedBox(height: 20),
+                if ((album.review ?? '').isNotEmpty) ...[
+                  const SizedBox(height: 20),
+                  const _SectionLabel('메모'),
+                  const SizedBox(height: 6),
+                  Text(album.review!,
+                      style: const TextStyle(
+                          color: AppColors.cream, height: 1.6)),
+                ],
+
+                const SizedBox(height: 24),
                 const Divider(color: AppColors.dim),
                 const SizedBox(height: 16),
 
-                ..._infoRowsMain(book),
-
-                if (book.isbn?.isNotEmpty ?? false) ...[
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      icon: const Icon(Icons.local_library_outlined, size: 18),
-                      label: const Text('가까운 도서관에서 이 책 찾아보기'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: AppColors.gold,
-                        side: BorderSide(
-                            color: AppColors.gold.withValues(alpha: 0.5)),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                      ),
-                      onPressed: () => context.push(
-                        '/search?tab=library&isbn=${Uri.encodeComponent(book.isbn!)}',
-                      ),
-                    ),
+                _SectionLabel('수록곡 ${compositions.length}곡'),
+                const SizedBox(height: 12),
+                if (compositions.isEmpty)
+                  const Text('등록된 수록곡이 없습니다',
+                      style: TextStyle(color: AppColors.muted, fontSize: 13))
+                else
+                  ...compositions.map(
+                    (c) => _CompositionBlock(composition: c),
                   ),
-                ],
-
-                ..._infoRowsTail(book),
-
-                if ((book.review ?? '').isNotEmpty) ...[
-                  const SizedBox(height: 16),
-                  const Text(
-                    '메모',
-                    style: TextStyle(color: AppColors.muted, fontSize: 12),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(book.review!, style: const TextStyle(color: AppColors.cream, height: 1.6)),
-                ],
-
-                if ((book.description ?? '').isNotEmpty) ...[
-                  const SizedBox(height: 16),
-                  const Text(
-                    '책 소개',
-                    style: TextStyle(color: AppColors.muted, fontSize: 12),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(book.description!,
-                      style: const TextStyle(color: AppColors.cream, height: 1.6)),
-                ],
               ]),
             ),
           ),
@@ -259,230 +200,178 @@ class _BookDetailBody extends StatelessWidget {
     );
   }
 
-  Widget _buildCover(String? url) {
-    if (url == null) return Container(color: AppColors.surface2);
-    if (url.startsWith('http')) {
-      return CachedNetworkImage(
-        imageUrl: url,
-        fit: BoxFit.cover,
-        placeholder: (_, _) => Container(color: AppColors.surface2),
-        errorWidget: (_, _, _) => Container(color: AppColors.surface2),
-      );
-    }
-    return Image.file(
-      File(url),
-      fit: BoxFit.cover,
-      errorBuilder: (_, _, _) => Container(color: AppColors.surface2),
-    );
-  }
-
-  // 장르까지 — [가까운 도서관에서 이 책 찾아보기] 버튼은 이 목록과 _infoRowsTail
-  // 사이, 장르 바로 아래에 표시된다.
-  List<Widget> _infoRowsMain(Book b) {
-    final acquiredStr = b.acquiredAt != null
-        ? '${b.acquiredAt!.year}년 ${b.acquiredAt!.month}월 ${b.acquiredAt!.day}일'
-        : null;
-    final pairs = <(String, String?)>[
-      ('출판연도', b.year),
-      ('출판사',   b.publisher),
-      ('책 만난 날', acquiredStr),
-      ('책장 위치', b.location),
-      ('청구기호', b.callNumber),
-      ('KDC',    b.kdc),
-      ('DDC',    b.ddc),
-      ('LC',     b.lc),
-      ('ISBN',   b.isbn),
-      ('매체',   b.medium == 'paper' ? '종이책'
-               : b.medium == 'ebook' ? '전자책'
-               : b.medium == 'audio' ? '오디오북'
-               : b.medium),
-    ];
-    final rows = _filterInfoRows(pairs);
-
-    // 장르는 "경로 + 내 분류 칩"을 한 줄에 얹으므로 _InfoRow로 표현할 수 없다.
-    // effectiveKdc: 정밀 코드가 없으면 manual_kdc 추정치로 장르를 표시한다.
-    // (단, 아래 'KDC' 정보 행과 도서관 서가찾기는 순수 b.kdc만 — 추정치 위장 금지.)
-    final path = kdcToGenre(b.effectiveKdc)?.pathLabel;
-    final tags = parseMyTags(b.genre);
-    if (path != null || tags.isNotEmpty) {
-      rows.add(_GenreInfoRow(path: path, tags: tags));
-    }
-    return rows;
-  }
-
-  // 총 페이지 — 장르 아래 버튼 다음에 이어서 표시된다.
-  List<Widget> _infoRowsTail(Book b) {
-    final pairs = <(String, String?)>[
-      ('총 페이지', b.pageCount?.toString()),
-    ];
-    return _filterInfoRows(pairs);
-  }
-
-  // map<Widget>: 반환 리스트에 _GenreInfoRow를 덧붙이므로 런타임 타입이
-  // List<_InfoRow>로 좁혀지면 안 된다.
-  List<Widget> _filterInfoRows(List<(String, String?)> pairs) => pairs
-      .where((p) => p.$2 != null && p.$2!.isNotEmpty)
-      .map<Widget>((p) => _InfoRow(label: p.$1, value: p.$2!))
-      .toList();
-
-  Future<void> _confirmDelete(BuildContext context) async {
+  Future<void> _confirmDelete(BuildContext context, WidgetRef ref) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('책 삭제'),
-        content: Text('"${book.title}"을(를) 삭제하시겠습니까?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('취소'),
-          ),
-          TextButton(
-            style: TextButton.styleFrom(foregroundColor: AppColors.red),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('삭제'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed != true) return;
-
-    await ref.read(bookRepositoryProvider).deleteBook(book);
-    ref.invalidate(booksProvider);
-    if (context.mounted) context.pop();
-  }
-
-  /// 처분(판매/기부/분실 등) 처리. status는 'owned'로 유지하고 disposedAt만
-  /// 기록한다 (결정: disposed 상태 A안 — §25). 행 삭제가 아니라 이력 보존.
-  Future<void> _confirmDispose(
-      BuildContext context, WidgetRef ref, Book book) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('책 처분'),
+        backgroundColor: AppColors.surface,
+        title: const Text('음반 삭제',
+            style: TextStyle(color: AppColors.cream)),
         content: Text(
-          '"${book.title}"을(를) 처분 처리하시겠습니까?\n'
-          '서가 목록에서 기본적으로 숨겨지고, 필터에서 다시 볼 수 있습니다.',
+          '「${album.title}」을(를) 삭제합니다.\n수록곡·악장·연주자 정보도 함께 사라집니다.',
+          style: const TextStyle(color: AppColors.muted, height: 1.5),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('취소'),
+            child: const Text('취소',
+                style: TextStyle(color: AppColors.muted)),
           ),
           TextButton(
-            style: TextButton.styleFrom(foregroundColor: AppColors.gold),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('처분'),
+            child: const Text('삭제', style: TextStyle(color: AppColors.red)),
           ),
         ],
       ),
     );
     if (confirmed != true || !context.mounted) return;
 
-    await ref.read(bookRepositoryProvider).updateBook(
-          book.copyWith(disposedAt: DateTime.now()),
-        );
-    ref.invalidate(booksProvider);
+    final navigator = Navigator.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      // 목록은 Drift watch 기반이라 삭제만 하면 자동 갱신된다(invalidate 불필요).
+      await ref.read(collectionRepositoryProvider).deleteAlbum(album.id);
+      if (navigator.canPop()) navigator.pop();
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('삭제 실패: $e')));
+    }
   }
 
-  /// 처분 취소(되돌리기). disposedAt만 지우면 원래 상태로 자동 복원된다.
-  Future<void> _undispose(
-      BuildContext context, WidgetRef ref, Book book) async {
-    await ref.read(bookRepositoryProvider).updateBook(
-          book.copyWith(disposedAt: null),
-        );
-    ref.invalidate(booksProvider);
+  Widget _buildCover(String? url) {
+    if (url == null || url.isEmpty) return _coverPlaceholder();
+    if (url.startsWith('http')) {
+      return CachedNetworkImage(
+        imageUrl: url,
+        fit: BoxFit.cover,
+        placeholder: (_, _) => _coverPlaceholder(),
+        errorWidget: (_, _, _) => _coverPlaceholder(),
+      );
+    }
+    return Image.file(
+      File(url),
+      fit: BoxFit.cover,
+      errorBuilder: (_, _, _) => _coverPlaceholder(),
+    );
   }
+
+  Widget _coverPlaceholder() => Container(
+        color: AppColors.surface3,
+        alignment: Alignment.center,
+        child: Icon(Icons.album_outlined,
+            size: 64, color: AppColors.gold.withValues(alpha: 0.4)),
+      );
 }
 
-class _StatusToggleRow extends StatelessWidget {
-  final Book book;
-  final WidgetRef ref;
-  const _StatusToggleRow({required this.book, required this.ref});
+// ── 앨범 메타 (레이블 · 발매연도 · 포맷 · 디스크 수) ────────────────────────────
+
+class _MetaLine extends StatelessWidget {
+  final Album album;
+  const _MetaLine({required this.album});
 
   @override
   Widget build(BuildContext context) {
-    return Row(
+    final parts = <String>[
+      if ((album.label ?? '').isNotEmpty) album.label!,
+      if (album.releaseYear != null) '${album.releaseYear}',
+      if ((album.format ?? '').isNotEmpty) album.format!,
+      if (album.discCount > 1) '${album.discCount}장 세트',
+    ];
+    if (parts.isEmpty) return const SizedBox.shrink();
+    return Text(
+      parts.join(' · '),
+      style: const TextStyle(color: AppColors.gold, fontSize: 15),
+    );
+  }
+}
+
+// ── 소장 상태 + 확인 필요 배지 ─────────────────────────────────────────────────
+
+class _StatusRow extends StatelessWidget {
+  final Album album;
+  const _StatusRow({required this.album});
+
+  @override
+  Widget build(BuildContext context) {
+    final disposedAt = album.disposedAt;
+    return Wrap(
+      spacing: 8,
+      runSpacing: 6,
+      crossAxisAlignment: WrapCrossAlignment.center,
       children: [
-        const Text('상태', style: TextStyle(color: AppColors.muted, fontSize: 13)),
-        const SizedBox(width: 12),
-        ToggleButtons(
-          isSelected: [
-            book.status == 'owned',
-            book.status == 'wishlist',
-            book.status == 'rental',
-          ],
-          onPressed: (i) async {
-            final newStatus = ['owned', 'wishlist', 'rental'][i];
-            if (newStatus == book.status) return;
-            await ref.read(bookRepositoryProvider).updateBook(
-              // 상태를 수동으로 바꾸는 시점엔 처분 이력도 함께 해제한다 —
-              // 처분됨은 owned 책에만 의미가 있음 (결정: disposed 상태 §25)
-              book.copyWith(status: newStatus, disposedAt: null),
-            );
-            ref.invalidate(booksProvider);
-          },
-          borderRadius: BorderRadius.circular(8),
-          selectedColor: AppColors.bg,
-          fillColor: AppColors.gold,
-          color: AppColors.muted,
-          borderColor: AppColors.dim,
-          selectedBorderColor: AppColors.gold,
-          textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
-          constraints: const BoxConstraints(minHeight: 36, minWidth: 68),
-          children: const [Text('소장'), Text('희망'), Text('대여')],
-        ),
+        if (album.status == HoldingStatus.disposed && disposedAt != null)
+          _Badge(
+            icon: Icons.inventory_2_outlined,
+            label:
+                '처분됨 · ${disposedAt.year}년 ${disposedAt.month}월 ${disposedAt.day}일',
+            color: AppColors.muted,
+          )
+        else
+          const _Badge(
+            icon: Icons.check_circle_outline,
+            label: '소장 중',
+            color: AppColors.muted,
+          ),
+        if (album.needsVerification)
+          const _Badge(
+            icon: Icons.help_outline,
+            label: '확인 필요',
+            color: AppColors.gold,
+          ),
       ],
     );
   }
 }
 
-/// 장르 경로와 "내 분류" 칩을 한 줄에 얹는다. 예: `문학 > 한국소설 · #SF #디스토피아`
-/// 미분류(kdc 없음)면 칩만 표시한다 (§26).
-class _GenreInfoRow extends StatelessWidget {
-  final String? path;
-  final List<String> tags;
-  const _GenreInfoRow({required this.path, required this.tags});
+class _Badge extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+  const _Badge(
+      {required this.icon, required this.label, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 14, color: color),
+        const SizedBox(width: 4),
+        Text(label, style: TextStyle(color: color, fontSize: 12)),
+      ],
+    );
+  }
+}
+
+// ── 연주자 한 줄 ("지휘 · 카라얀") ──────────────────────────────────────────────
+
+class _PerformerLine extends StatelessWidget {
+  final Performer performer;
+
+  /// 곡별 예외로 그릴 때 들여쓰기·색을 달리한다.
+  final bool isOverride;
+  const _PerformerLine({required this.performer, this.isOverride = false});
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 5),
+      padding: const EdgeInsets.only(bottom: 4),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const SizedBox(
-            width: 76,
-            child: Text('장르',
-                style: TextStyle(color: AppColors.muted, fontSize: 13)),
+          SizedBox(
+            width: 48,
+            child: Text(
+              _roleLabel(performer.role),
+              style: const TextStyle(color: AppColors.muted, fontSize: 12),
+            ),
           ),
           Expanded(
-            child: Wrap(
-              spacing: 6,
-              runSpacing: 4,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                if (path != null)
-                  Text(path!,
-                      style: const TextStyle(
-                          color: AppColors.cream, fontSize: 13)),
-                if (path != null && tags.isNotEmpty)
-                  const Text('·',
-                      style:
-                          TextStyle(color: AppColors.muted, fontSize: 13)),
-                ...tags.map((t) => Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: AppColors.surface2,
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: AppColors.dim),
-                      ),
-                      child: Text('#$t',
-                          style: const TextStyle(
-                              color: AppColors.gold, fontSize: 12)),
-                    )),
-              ],
+            child: Text(
+              performer.name,
+              style: TextStyle(
+                color: isOverride ? AppColors.gold : AppColors.cream,
+                fontSize: 13,
+              ),
             ),
           ),
         ],
@@ -491,26 +380,173 @@ class _GenreInfoRow extends StatelessWidget {
   }
 }
 
-class _InfoRow extends StatelessWidget {
-  final String label;
-  final String value;
-  const _InfoRow({required this.label, required this.value});
+// ── 수록곡 블록 (2단) + 악장 (3단) ─────────────────────────────────────────────
+
+class _CompositionBlock extends StatelessWidget {
+  final Composition composition;
+  const _CompositionBlock({required this.composition});
 
   @override
   Widget build(BuildContext context) {
+    final movements = [...composition.movements]
+      ..sort((a, b) => a.seq.compareTo(b.seq));
+
+    // 방식 2: override가 없으면 연주자 줄을 아예 그리지 않는다(헤더 값 상속).
+    // 있으면 override에 담긴 역할만 — 상속받는 역할은 여기 다시 쓰지 않는다.
+    final overrides = composition.hasPerformerOverride
+        ? composition.performerOverrides!
+        : const <Performer>[];
+
+    // TODO: Work 조인 표시 (대 2)
+    //   workId가 있으면 정규 작품명(Work.title)을 보여야 하나 지금은 조인 경로가
+    //   없다. 그때까지는 작곡가 + 작품번호만 표시한다.
+    final heading = [
+      composition.composer,
+      if ((composition.catalogNumber ?? '').isNotEmpty)
+        composition.catalogNumber!,
+    ].join(' · ');
+
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 5),
+      padding: const EdgeInsets.only(bottom: 18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Text(
+                  heading,
+                  style: const TextStyle(
+                    color: AppColors.cream,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+              if (composition.confidence == Confidence.unverified)
+                const Padding(
+                  padding: EdgeInsets.only(left: 8, top: 2),
+                  child: Icon(Icons.help_outline,
+                      size: 14, color: AppColors.gold),
+                ),
+            ],
+          ),
+
+          // 곡별 연주자 예외만.
+          if (overrides.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Padding(
+              padding: const EdgeInsets.only(left: 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: overrides
+                    .map((p) =>
+                        _PerformerLine(performer: p, isOverride: true))
+                    .toList(),
+              ),
+            ),
+          ],
+
+          // 3단: 악장. 없으면 줄 자체를 생략.
+          if (movements.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Padding(
+              padding: const EdgeInsets.only(left: 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: movements
+                    .map((m) => _MovementLine(movement: m))
+                    .toList(),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _MovementLine extends StatelessWidget {
+  final Movement movement;
+  const _MovementLine({required this.movement});
+
+  @override
+  Widget build(BuildContext context) {
+    final duration = movement.durationSec;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 3),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(
-            width: 76,
-            child: Text(label, style: const TextStyle(color: AppColors.muted, fontSize: 13)),
-          ),
           Expanded(
-            child: Text(value, style: const TextStyle(color: AppColors.cream, fontSize: 13)),
+            child: Text(
+              movement.title,
+              style: const TextStyle(
+                  color: AppColors.muted, fontSize: 12, height: 1.5),
+            ),
           ),
+          if (duration != null) ...[
+            const SizedBox(width: 8),
+            Text(
+              _formatDuration(duration),
+              style: const TextStyle(color: AppColors.dim, fontSize: 11),
+            ),
+          ],
         ],
+      ),
+    );
+  }
+}
+
+// ── 공용 소품 ──────────────────────────────────────────────────────────────────
+
+class _SectionLabel extends StatelessWidget {
+  final String text;
+  const _SectionLabel(this.text);
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      text,
+      style: const TextStyle(
+        color: AppColors.gold,
+        fontSize: 12,
+        fontWeight: FontWeight.w600,
+        letterSpacing: 0.8,
+      ),
+    );
+  }
+}
+
+/// SliverAppBar 위에 얹는 반투명 원형 아이콘 버튼 (커버 위 가독성 확보).
+class _RoundAction extends StatelessWidget {
+  final IconData icon;
+  final String? tooltip;
+  final Color? color;
+  final VoidCallback onPressed;
+  const _RoundAction({
+    required this.icon,
+    required this.onPressed,
+    this.tooltip,
+    this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.35),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: IconButton(
+        icon: Icon(icon, color: color),
+        tooltip: tooltip,
+        padding: const EdgeInsets.all(6),
+        constraints: const BoxConstraints(),
+        iconSize: 22,
+        onPressed: onPressed,
       ),
     );
   }

@@ -1,3 +1,5 @@
+// 2B-2 등록 폼 커버 촬영(§4-4)에서 사용 예정 — 현재 미배선
+
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';

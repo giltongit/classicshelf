@@ -2,17 +2,14 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../features/home/home_background_notifier.dart';
 import '../providers/providers.dart';
-import '../services/csv_export_service.dart';
-import '../services/library_search_service.dart';
 import '../theme/app_theme.dart';
 
-final _csvExportServiceProvider = Provider<CsvExportService>((ref) {
-  return CsvExportService(ref.watch(bookRepositoryProvider));
-});
+// TODO: 클래식 재작성 (2B)
+//   book 시절 CSV 내보내기 서비스 프로바이더가 여기 있었다.
+//   csv_export_service.dart 는 2A에서 삭제됨 — 앨범 기준으로 재작성 필요.
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -79,25 +76,12 @@ class SettingsScreen extends ConsumerWidget {
               ],
             ),
           ),
-          const _SectionHeader('데이터 관리'),
-          _SettingsTile(
-            icon: Icons.download_outlined,
-            title: 'CSV로 내보내기',
-            subtitle: '전체 도서 목록을 CSV 파일로 공유합니다',
-            onTap: () => _exportCsv(context, ref),
-          ),
-          _SettingsTile(
-            icon: Icons.upload_file_outlined,
-            title: 'CSV 가져오기',
-            subtitle: 'CSV 파일에서 도서 목록을 불러옵니다',
-            onTap: () => context.push('/csv-import'),
-          ),
-          _SettingsTile(
-            icon: Icons.auto_fix_high,
-            title: 'KDC 자동 채우기',
-            subtitle: 'ISBN이 있는 책에 KDC 분류기호를 자동으로 입력합니다',
-            onTap: () => _backfillKdc(context, ref),
-          ),
+          // TODO: 클래식 재작성 (2B)
+          //   '데이터 관리' 섹션 전체를 비활성화했다. 원래 항목:
+          //     - CSV로 내보내기  (csv_export_service, bookRepositoryProvider)
+          //     - CSV 가져오기    (/csv-import 라우트, csv_import_screen)
+          //     - KDC 자동 채우기 (LibrarySearchService.getClassNo + updateBook)
+          //   앨범/작품 기준 내보내기·가져오기로 재설계 후 복원할 것.
           const _SectionHeader('계정'),
           Padding(
             padding:
@@ -168,138 +152,11 @@ class SettingsScreen extends ConsumerWidget {
     );
   }
 
-  Future<void> _exportCsv(BuildContext context, WidgetRef ref) async {
-    // 1. 권수 먼저 조회
-    final books = await ref.read(bookRepositoryProvider).getBooks();
-    if (!context.mounted) return;
-
-    if (books.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('내보낼 책이 없습니다')),
-      );
-      return;
-    }
-
-    // 2. 확인 다이얼로그
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1915),
-        title: const Text(
-          'CSV로 내보내기',
-          style: TextStyle(color: Color(0xFFF0E6D3)),
-        ),
-        content: Text(
-          '${books.length}권을 내보냅니다. 계속할까요?\n\n'
-          '파일은 휴대폰 다운로드 폴더에 저장됩니다.',
-          style: const TextStyle(color: Color(0xFF7A7060)),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('취소',
-                style: TextStyle(color: Color(0xFF7A7060))),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('내보내기',
-                style: TextStyle(color: Color(0xFFC8A96E))),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed != true) return;
-    // 확인 다이얼로그를 await한 사이 화면이 사라졌을 수 있다.
-    if (!context.mounted) return;
-
-    // 3. 내보내기 실행
-    final messenger = ScaffoldMessenger.of(context);
-    try {
-      final result = await ref.read(_csvExportServiceProvider).export();
-      if (!context.mounted) return;
-      final fileName = result.path.split('/').last;
-      await showDialog<void>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          backgroundColor: const Color(0xFF1A1915),
-          title: const Text(
-            '저장 완료',
-            style: TextStyle(color: Color(0xFFF0E6D3)),
-          ),
-          content: Text(
-            '${result.count}권을 다운로드 폴더에 저장했습니다.\n\n'
-            '내 파일 앱 → 다운로드\n$fileName',
-            style: const TextStyle(
-              color: Color(0xFF7A7060),
-              height: 1.6,
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text(
-                '확인',
-                style: TextStyle(color: Color(0xFFC8A96E)),
-              ),
-            ),
-          ],
-        ),
-      );
-    } catch (e) {
-      if (!context.mounted) return;
-      messenger.showSnackBar(
-        SnackBar(content: Text('내보내기 실패: $e')),
-      );
-    }
-  }
-
-  Future<void> _backfillKdc(BuildContext context, WidgetRef ref) async {
-    final books = await ref.read(booksProvider.future);
-    final targets = books.where((b) => (b.kdc == null || b.kdc!.isEmpty) && (b.isbn?.isNotEmpty ?? false)).toList();
-    if (!context.mounted) return;
-
-    if (targets.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('KDC를 채울 책이 없습니다 (ISBN 없거나 이미 입력됨)')),
-      );
-      return;
-    }
-
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1915),
-        content: Text(
-          '${targets.length}권에 KDC 기호를 가져오는 중...',
-          style: const TextStyle(color: AppColors.cream),
-        ),
-      ),
-    );
-
-    final service = LibrarySearchService();
-    final repo = ref.read(bookRepositoryProvider);
-    int updated = 0;
-
-    for (final book in targets) {
-      final classNo = await service.getClassNo(book.isbn!);
-      if (classNo != null && classNo.isNotEmpty) {
-        await repo.updateBook(book.copyWith(kdc: classNo));
-        updated++;
-      }
-    }
-
-    ref.invalidate(booksProvider);
-
-    if (context.mounted) {
-      Navigator.of(context, rootNavigator: true).pop();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('$updated권에 KDC 기호를 입력했습니다')),
-      );
-    }
-  }
-
+  // TODO: 클래식 재작성 (2B)
+  //   _exportCsv() / _backfillKdc() 를 제거했다.
+  //   _exportCsv  : bookRepositoryProvider.getBooks() + CsvExportService.export()
+  //   _backfillKdc: booksProvider + LibrarySearchService.getClassNo + updateBook(kdc)
+  //   둘 다 book 전용 프로바이더·서비스에 의존해 컴파일 불가였다.
 }
 
 class _SectionHeader extends StatelessWidget {

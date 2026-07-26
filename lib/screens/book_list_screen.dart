@@ -1,3 +1,15 @@
+// =============================================================================
+// book_list_screen.dart — 앨범 목록 "서가" (2B-1 재작성)
+//   파일명은 라우팅 참조를 줄이려고 유지, 클래스는 AlbumListScreen.
+//
+// 구독: albumSummariesProvider (StreamProvider, albumFilterProvider를 watch)
+//   → 필터·정렬을 바꾸면 Drift 쿼리가 다시 돌고 스트림이 재방출된다.
+//   화면에서 재정렬·재필터하지 않는다 — 그건 리포지토리 책임(§6-3).
+//
+// 이번 단계 범위: 목록 표시 + 정렬 + 검색어 + reactive 구독.
+//   필터 시트(작곡가·시대·포맷·소장상태) UI는 아직 스텁.
+// =============================================================================
+
 import 'dart:io';
 
 import 'package:cached_network_image/cached_network_image.dart';
@@ -5,119 +17,101 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../models/book.dart';
+import '../models/album_filter.dart';
+import '../models/album_summary.dart';
 import '../providers/providers.dart';
 import '../theme/app_theme.dart';
-import '../utils/kdc_genre.dart';
-import 'book_filter_sheet.dart';
 
-class BookListScreen extends ConsumerWidget {
-  const BookListScreen({super.key});
+String _sortLabel(AlbumSort sort) => switch (sort) {
+      AlbumSort.createdDesc => '등록순',
+      AlbumSort.composerAsc => '작곡가순',
+      AlbumSort.releaseYearDesc => '발매연도순',
+      AlbumSort.titleAsc => '제목순',
+    };
+
+class AlbumListScreen extends ConsumerWidget {
+  const AlbumListScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final booksAsync = ref.watch(filteredBooksProvider);
-    final filter = ref.watch(bookFilterProvider);
-
-    void openFilterSheet() {
-      final books = ref.read(booksProvider).value ?? [];
-      final allLocations = books
-          .map((b) => b.location)
-          .whereType<String>()
-          .where((l) => l.isNotEmpty)
-          .toSet()
-          .toList()
-        ..sort();
-      // 서가에 실제로 존재하는 KDC 대분류 키만, KDC 순서(0~9)대로.
-      // effectiveKdc: manual_kdc로만 분류된 책도 필터 칩에 나타나야 한다.
-      final presentKeys = books
-          .map((b) => b.effectiveKdc?.trim())
-          .where((k) => k != null && k.isNotEmpty)
-          .map((k) => k![0])
-          .toSet();
-      final allGenreKeys = kdcMainClassesOrdered
-          .map((e) => e.key)
-          .where(presentKeys.contains)
-          .toList();
-
-      showModalBottomSheet<void>(
-        context: context,
-        isScrollControlled: true,
-        backgroundColor: AppColors.surface,
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-        ),
-        builder: (_) => BookFilterSheet(
-          current: ref.read(bookFilterProvider),
-          allLocations: allLocations,
-          allGenreKeys: allGenreKeys,
-          onApply: (f) => ref.read(bookFilterProvider.notifier).update(f),
-        ),
-      );
-    }
+    final albumsAsync = ref.watch(albumSummariesProvider);
+    final filter = ref.watch(albumFilterProvider);
 
     return Scaffold(
       appBar: AppBar(
         title: ref.watch(libraryNameProvider).whenOrNull(
-          data: (name) => Text(name ?? '나의 도서관'),
-        ) ?? const Text('나의 도서관'),
+                  data: (name) => Text(name ?? '나의 컬렉션'),
+                ) ??
+            const Text('나의 컬렉션'),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.qr_code_scanner),
-            tooltip: '바코드 스캔',
-            onPressed: () => context.push('/scan'),
-          ),
-          IconButton(
-            icon: const Icon(Icons.search_rounded),
-            tooltip: '도서 검색',
-            onPressed: () => context.push('/book-search'),
-          ),
-          Stack(
-            alignment: Alignment.topRight,
-            children: [
-              IconButton(
-                icon: const Icon(Icons.tune_rounded),
-                tooltip: '필터',
-                onPressed: openFilterSheet,
-              ),
-              if (filter.activeCount > 0)
-                Positioned(
-                  right: 6,
-                  top: 6,
-                  child: CircleAvatar(
-                    radius: 8,
-                    backgroundColor: AppColors.gold,
+          // TODO: 스캔·검색 (대 2)
+          //   2A에서 /scan(바코드) · /book-search(외부 도서 검색) 라우트를 지웠다.
+          //   클래식은 EAN-13 바코드 → 음반 메타 조회가 대응 기능이 된다.
+
+          // 정렬 — 실제 동작. sort만 바꾸면 albumSummariesProvider가 재방출된다.
+          PopupMenuButton<AlbumSort>(
+            icon: const Icon(Icons.sort_rounded),
+            tooltip: '정렬',
+            color: AppColors.surface2,
+            initialValue: filter.sort,
+            onSelected: (s) =>
+                ref.read(albumFilterProvider.notifier).setSort(s),
+            itemBuilder: (_) => AlbumSort.values
+                .map(
+                  (s) => PopupMenuItem<AlbumSort>(
+                    value: s,
                     child: Text(
-                      '${filter.activeCount}',
-                      style: const TextStyle(
-                          fontSize: 10, color: AppColors.bg),
+                      _sortLabel(s),
+                      style: TextStyle(
+                        color: s == filter.sort
+                            ? AppColors.gold
+                            : AppColors.cream,
+                      ),
                     ),
                   ),
-                ),
-            ],
+                )
+                .toList(),
+          ),
+
+          // TODO: 클래식 필터 시트 (§6-3) — 작곡가 · 시대 · 포맷 · 소장상태
+          //   albumFilterProvider에 배선(composer/period/format/status/
+          //   onlyNeedsVerification)은 이미 있고 리포지토리도 처리한다.
+          //   빠진 건 시트 UI뿐이라, 붙일 때 화면 로직은 건드릴 필요 없다.
+          IconButton(
+            icon: const Icon(Icons.tune_rounded),
+            tooltip: '필터',
+            onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('필터 준비 중 (§6-3, 2B-2 이후)')),
+            ),
           ),
           IconButton(
             icon: const Icon(Icons.add),
-            tooltip: '책 추가',
+            tooltip: '음반 추가',
             onPressed: () => context.push('/add'),
           ),
         ],
       ),
       body: Column(
         children: [
-          _LocalSearchBar(),
+          const _LocalSearchBar(),
           Expanded(
             child: RefreshIndicator(
               color: AppColors.gold,
               backgroundColor: AppColors.surface2,
+              // TODO: syncFromRemote 구현 후 복원 (read/sync 경로)
+              //   collection_repository_impl.dart:867 이 아직 UnimplementedError를
+              //   던진다. 그대로 부르면 당겨서 새로고침이 예외로 끝나므로,
+              //   제스처는 살리고 안내만 띄운다.
+              //   목록 자체는 Drift watch가 자동 갱신하므로 지금 못 쓰는 건
+              //   "원격에서 끌어오기"뿐이다.
               onRefresh: () async {
-                await ref.read(bookRepositoryProvider).syncFromRemote();
-                ref.invalidate(booksProvider);
-                try {
-                  await ref.read(booksProvider.future);
-                } catch (_) {}
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('서버 동기화 준비 중 (read/sync 경로 구현 예정)'),
+                  ),
+                );
               },
-              child: booksAsync.when(
+              child: albumsAsync.when(
                 loading: () => const Center(
                   child: CircularProgressIndicator(color: AppColors.gold),
                 ),
@@ -133,48 +127,17 @@ class BookListScreen extends ConsumerWidget {
                     ),
                   ],
                 ),
-                data: (books) {
-                  if (books.isEmpty) {
-                    return ListView(
-                      children: [
-                        const SizedBox(height: 160),
-                        Center(
-                          child: Column(
-                            children: [
-                              Icon(
-                                filter.isEmpty
-                                    ? Icons.menu_book_outlined
-                                    : Icons.search_off_rounded,
-                                size: 56,
-                                color: AppColors.dim,
-                              ),
-                              const SizedBox(height: 16),
-                              Text(
-                                filter.isEmpty
-                                    ? '책이 없습니다'
-                                    : '필터 조건에 맞는 책이 없습니다',
-                                style: const TextStyle(
-                                    color: AppColors.muted, fontSize: 16),
-                              ),
-                              const SizedBox(height: 8),
-                              if (filter.isEmpty)
-                                const Text(
-                                  '위에서 당겨 동기화하거나 + 버튼으로 추가하세요',
-                                  style: TextStyle(
-                                      color: AppColors.dim, fontSize: 13),
-                                ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    );
+                data: (albums) {
+                  if (albums.isEmpty) {
+                    return _EmptyState(filterIsEmpty: filter.isEmpty);
                   }
                   return ListView.separated(
                     padding: const EdgeInsets.symmetric(
                         vertical: 8, horizontal: 12),
-                    itemCount: books.length,
+                    itemCount: albums.length,
                     separatorBuilder: (_, _) => const SizedBox(height: 6),
-                    itemBuilder: (context, i) => _BookCard(book: books[i]),
+                    itemBuilder: (context, i) =>
+                        _AlbumCard(album: albums[i]),
                   );
                 },
               ),
@@ -186,9 +149,67 @@ class BookListScreen extends ConsumerWidget {
   }
 }
 
+// ── 빈 상태 ────────────────────────────────────────────────────────────────────
+
+class _EmptyState extends StatelessWidget {
+  final bool filterIsEmpty;
+  const _EmptyState({required this.filterIsEmpty});
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      children: [
+        const SizedBox(height: 160),
+        Center(
+          child: Column(
+            children: [
+              Icon(
+                filterIsEmpty
+                    ? Icons.album_outlined
+                    : Icons.search_off_rounded,
+                size: 56,
+                color: AppColors.dim,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                filterIsEmpty ? '등록된 음반이 없습니다' : '조건에 맞는 음반이 없습니다',
+                style:
+                    const TextStyle(color: AppColors.muted, fontSize: 16),
+              ),
+              const SizedBox(height: 8),
+              if (filterIsEmpty) ...[
+                // 당겨서 동기화는 위 TODO대로 아직 안내만 띄운다 —
+                // 안 되는 걸 권하지 않도록 문안에서 뺐다.
+                const Text(
+                  '+ 버튼으로 음반을 추가하세요',
+                  style: TextStyle(color: AppColors.dim, fontSize: 13),
+                ),
+                const SizedBox(height: 16),
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text('음반 등록'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.gold,
+                    side: BorderSide(
+                        color: AppColors.gold.withValues(alpha: 0.5)),
+                  ),
+                  onPressed: () => context.push('/add'),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 // ── 서가 로컬 검색창 ──────────────────────────────────────────────────────────
+// AlbumFilter.query → 리포지토리에서 제목 ∪ 작곡가 부분일치로 처리된다.
 
 class _LocalSearchBar extends ConsumerStatefulWidget {
+  const _LocalSearchBar();
+
   @override
   ConsumerState<_LocalSearchBar> createState() => _LocalSearchBarState();
 }
@@ -210,7 +231,7 @@ class _LocalSearchBarState extends ConsumerState<_LocalSearchBar> {
         controller: _ctrl,
         style: const TextStyle(color: AppColors.cream),
         decoration: InputDecoration(
-          hintText: '제목, 저자, 위치로 검색...',
+          hintText: '음반 제목, 작곡가로 검색...',
           hintStyle: const TextStyle(color: AppColors.muted),
           prefixIcon:
               const Icon(Icons.search_rounded, color: AppColors.muted),
@@ -219,9 +240,8 @@ class _LocalSearchBarState extends ConsumerState<_LocalSearchBar> {
                   icon: const Icon(Icons.clear, color: AppColors.muted),
                   onPressed: () {
                     _ctrl.clear();
-                    ref
-                        .read(bookFilterProvider.notifier)
-                        .setSearchQuery('');
+                    setState(() {});
+                    ref.read(albumFilterProvider.notifier).setQuery(null);
                   },
                 )
               : null,
@@ -236,110 +256,102 @@ class _LocalSearchBarState extends ConsumerState<_LocalSearchBar> {
         ),
         onChanged: (v) {
           setState(() {});
-          ref.read(bookFilterProvider.notifier).setSearchQuery(v);
+          ref.read(albumFilterProvider.notifier).setQuery(v);
         },
       ),
     );
   }
 }
 
-// ── _BookCard ─────────────────────────────────────────────────────────────────
+// ── 앨범 카드 ──────────────────────────────────────────────────────────────────
 
-class _BookCard extends ConsumerWidget {
-  final Book book;
-  const _BookCard({required this.book});
+class _AlbumCard extends StatelessWidget {
+  final AlbumSummary album;
+  const _AlbumCard({required this.album});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return Material(
-      color: AppColors.surface2,
-      borderRadius: BorderRadius.circular(10),
-      child: InkWell(
+  Widget build(BuildContext context) {
+    final isDisposed = album.disposedAt != null;
+
+    final meta = <String>[
+      if ((album.format ?? '').isNotEmpty) album.format!,
+      if (album.releaseYear != null) '${album.releaseYear}',
+      if (album.compositionCount > 0) '${album.compositionCount}곡',
+    ].join(' · ');
+
+    return Opacity(
+      // 처분한 음반은 목록에 남되 흐리게.
+      opacity: isDisposed ? 0.5 : 1.0,
+      child: Material(
+        color: AppColors.surface2,
         borderRadius: BorderRadius.circular(10),
-        onTap: () => context.push('/books/${book.localId}'),
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Row(
-            children: [
-              _CoverThumb(coverUrl: book.coverUrl, title: book.title),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      book.title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: AppColors.cream,
-                        fontWeight: FontWeight.w500,
-                        fontSize: 14,
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      book.author,
-                      style: const TextStyle(
-                          color: AppColors.muted, fontSize: 12),
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            _StatusBadge(status: book.status),
-                            if (book.location?.isNotEmpty == true) ...[
-                              const SizedBox(width: 8),
-                              const Icon(Icons.bookmarks_outlined,
-                                  size: 12, color: AppColors.muted),
-                              const SizedBox(width: 4),
-                              ConstrainedBox(
-                                constraints:
-                                    const BoxConstraints(maxWidth: 100),
-                                child: Text(
-                                  book.location!,
-                                  style: const TextStyle(
-                                      fontSize: 12, color: AppColors.muted),
-                                  overflow: TextOverflow.ellipsis,
-                                  maxLines: 1,
-                                ),
-                              ),
-                            ],
-                          ],
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: () => context.push('/albums/${album.id}'),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              children: [
+                _CoverThumb(coverUrl: album.coverUrl),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        album.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: AppColors.cream,
+                          fontWeight: FontWeight.w500,
+                          fontSize: 14,
                         ),
-                        SizedBox(
-                          width: 40,
-                          height: 26,
-                          child: Transform.scale(
-                            scale: 0.65,
-                            alignment: Alignment.centerRight,
-                            child: Switch(
-                              value: book.priorityRead,
-                              onChanged: (_) async {
-                                await ref
-                                    .read(bookRepositoryProvider)
-                                    .togglePriorityRead(book.localId!);
-                                ref.invalidate(booksProvider);
-                              },
-                              activeThumbColor: AppColors.gold,
-                              activeTrackColor:
-                                  AppColors.gold.withValues(alpha: 0.3),
-                              inactiveThumbColor: AppColors.muted,
-                              inactiveTrackColor:
-                                  AppColors.muted.withValues(alpha: 0.2),
-                            ),
-                          ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        album.primaryComposer ?? '작곡가 미상',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                            color: AppColors.muted, fontSize: 12),
+                      ),
+                      if (meta.isNotEmpty) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          meta,
+                          style: const TextStyle(
+                              color: AppColors.dim, fontSize: 11),
                         ),
                       ],
-                    ),
-                  ],
+                      if (isDisposed || album.needsVerification) ...[
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 4,
+                          children: [
+                            if (isDisposed)
+                              const _Chip(
+                                label: '처분',
+                                fg: AppColors.muted,
+                                bg: AppColors.mutedSubtle,
+                              ),
+                            if (album.needsVerification)
+                              const _Chip(
+                                label: '확인 필요',
+                                fg: AppColors.gold,
+                                bg: AppColors.goldSubtle,
+                              ),
+                          ],
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
-              ),
-              const Icon(Icons.chevron_right, color: AppColors.dim, size: 18),
-            ],
+                const Icon(Icons.chevron_right,
+                    color: AppColors.dim, size: 18),
+              ],
+            ),
           ),
         ),
       ),
@@ -347,69 +359,14 @@ class _BookCard extends ConsumerWidget {
   }
 }
 
-class _CoverThumb extends StatelessWidget {
-  final String? coverUrl;
-  final String title;
-  const _CoverThumb({required this.coverUrl, required this.title});
+class _Chip extends StatelessWidget {
+  final String label;
+  final Color fg;
+  final Color bg;
+  const _Chip({required this.label, required this.fg, required this.bg});
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(6),
-      child: SizedBox(
-        width: 52,
-        height: 72,
-        child: _buildCoverChild(coverUrl, title),
-      ),
-    );
-  }
-
-  Widget _buildCoverChild(String? url, String title) {
-    if (url == null) return _placeholder(title);
-    if (url.startsWith('http')) {
-      return CachedNetworkImage(
-        imageUrl: url,
-        fit: BoxFit.cover,
-        placeholder: (_, _) => _placeholder(title),
-        errorWidget: (_, _, _) => _placeholder(title),
-      );
-    }
-    return Image.file(
-      File(url),
-      fit: BoxFit.cover,
-      errorBuilder: (_, _, _) => _placeholder(title),
-    );
-  }
-
-  Widget _placeholder(String title) {
-    final ch = title.isNotEmpty ? title[0] : '?';
-    return Container(
-      color: AppColors.surface3,
-      alignment: Alignment.center,
-      child: Text(
-        ch,
-        style: const TextStyle(
-          color: AppColors.gold,
-          fontWeight: FontWeight.w700,
-          fontSize: 20,
-        ),
-      ),
-    );
-  }
-}
-
-class _StatusBadge extends StatelessWidget {
-  final String status;
-  const _StatusBadge({required this.status});
-
-  @override
-  Widget build(BuildContext context) {
-    final (label, fg, bg) = switch (status) {
-      'owned'    => ('소장', AppColors.gold, AppColors.goldSubtle),
-      'wishlist' => ('희망', AppColors.muted, AppColors.mutedSubtle),
-      'rental'   => ('대여', const Color(0xFF5B7FA6), const Color(0x265B7FA6)),
-      _          => ('기타', AppColors.muted, AppColors.mutedSubtle),
-    };
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
       decoration: BoxDecoration(
@@ -427,4 +384,49 @@ class _StatusBadge extends StatelessWidget {
       ),
     );
   }
+}
+
+// ── 커버 썸네일 (52×72) ────────────────────────────────────────────────────────
+// placeholder는 상세(AlbumDetailScreen)와 같은 album_outlined로 통일.
+
+class _CoverThumb extends StatelessWidget {
+  final String? coverUrl;
+  const _CoverThumb({required this.coverUrl});
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(6),
+      child: SizedBox(
+        width: 52,
+        height: 72,
+        child: _buildChild(),
+      ),
+    );
+  }
+
+  Widget _buildChild() {
+    final url = coverUrl;
+    if (url == null || url.isEmpty) return _placeholder();
+    if (url.startsWith('http')) {
+      return CachedNetworkImage(
+        imageUrl: url,
+        fit: BoxFit.cover,
+        placeholder: (_, _) => _placeholder(),
+        errorWidget: (_, _, _) => _placeholder(),
+      );
+    }
+    return Image.file(
+      File(url),
+      fit: BoxFit.cover,
+      errorBuilder: (_, _, _) => _placeholder(),
+    );
+  }
+
+  Widget _placeholder() => Container(
+        color: AppColors.surface3,
+        alignment: Alignment.center,
+        child: Icon(Icons.album_outlined,
+            size: 24, color: AppColors.gold.withValues(alpha: 0.5)),
+      );
 }

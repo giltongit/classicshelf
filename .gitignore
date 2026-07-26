@@ -47,3 +47,8 @@ app.*.map.json
 # 환경변수 (실제 키 - 커밋 금지)
 env/*.json
 !env/*.example.json
+
+# R session artifacts
+.Rhistory
+.RData
+.Rproj.user/

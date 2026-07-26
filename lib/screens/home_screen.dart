@@ -7,7 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../features/home/home_background_notifier.dart';
-import '../models/book.dart';
+import '../models/album_summary.dart';
 import '../providers/providers.dart';
 import '../theme/app_theme.dart';
 
@@ -20,9 +20,6 @@ class HomeScreen extends ConsumerStatefulWidget {
 
 class _HomeScreenState extends ConsumerState<HomeScreen>
     with WidgetsBindingObserver {
-  Book? _wishlistBook;
-  bool _wishlistPicked = false;
-
   @override
   void initState() {
     super.initState();
@@ -42,23 +39,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     }
   }
 
-  void _tryPickWishlist(List<Book> books) {
-    if (_wishlistPicked) return;
-    final unreadOwned = books.where((b) =>
-        b.status == 'owned' && !b.isRead).toList();
-    if (unreadOwned.isNotEmpty) {
-      _wishlistBook = unreadOwned[Random().nextInt(unreadOwned.length)];
-      _wishlistPicked = true;
-    } else if (books.isNotEmpty) {
-      _wishlistPicked = true;
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    final books = switch (ref.watch(booksProvider)) {
+    // 홈은 서가 탭의 필터와 무관하게 컬렉션 전체를 집계해야 하므로
+    // 무필터 프로바이더를 쓴다(필터 watch하는 albumSummariesProvider는 목록 전용).
+    final summaries = switch (ref.watch(allAlbumSummariesProvider)) {
       AsyncData(:final value) => value,
-      _ => <Book>[],
+      _ => const <AlbumSummary>[],
     };
     final libraryName = switch (ref.watch(libraryNameProvider)) {
       AsyncData(:final value) => value,
@@ -69,22 +56,22 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
       _ => null,
     };
 
-    // 처분된 책은 홈 화면 전체에서 제외 (결정: disposed 상태 §25)
-    final activeBooks = books.where((b) => !b.isDisposed).toList();
+    // 처분한 음반은 홈 화면 전체에서 제외 (결정: disposed 상태 §25)
+    final ownedAlbums =
+        summaries.where((a) => a.disposedAt == null).toList();
 
-    _tryPickWishlist(activeBooks);
-
-    // 오늘의 책: 희망 도서 중 날짜 기반 랜덤
-    final wishlistBooks =
-        activeBooks.where((b) => b.status == 'wishlist').toList();
-    Book? todayBook;
-    if (wishlistBooks.isNotEmpty) {
+    // 오늘의 음반: 소장 음반 중 날짜 기반 랜덤.
+    // book의 '오늘의 책'은 희망도서(status='wishlist')에서 골랐지만
+    // AlbumSummary의 상태는 owned/disposed뿐이라 소장분에서 고른다.
+    AlbumSummary? todayAlbum;
+    if (ownedAlbums.isNotEmpty) {
       final now = DateTime.now();
       final seed = now.year * 10000 + now.month * 100 + now.day;
-      todayBook = wishlistBooks[Random(seed).nextInt(wishlistBooks.length)];
+      todayAlbum = ownedAlbums[Random(seed).nextInt(ownedAlbums.length)];
     }
 
-    final unreadCount = activeBooks.where((b) => !b.isRead).length;
+    final compositionCount =
+        ownedAlbums.fold<int>(0, (sum, a) => sum + a.compositionCount);
 
     return Scaffold(
       body: Stack(
@@ -120,18 +107,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                 children: [
                   _buildHeader(libraryName),
                   const SizedBox(height: 28),
-                  if (todayBook != null) ...[
-                    _TodayBookCard(book: todayBook),
+                  if (todayAlbum != null) ...[
+                    _TodayAlbumCard(album: todayAlbum),
                     const SizedBox(height: 16),
                   ],
                   _SummaryCard(
-                    totalCount: activeBooks.length,
-                    unreadCount: unreadCount,
+                    totalCount: ownedAlbums.length,
+                    compositionCount: compositionCount,
                   ),
-                  if (_wishlistBook != null) ...[
-                    const SizedBox(height: 16),
-                    _WishlistCard(book: _wishlistBook!),
-                  ],
+                  // TODO: 클래식 재작성 (2B)
+                  //   book의 '좀 오래 묵은 책' 카드를 제거했다.
+                  //   미독(isRead) · 등록일(createdAt) 기준이었는데 AlbumSummary에는
+                  //   둘 다 없다. 대체 후보: needsVerification(§6-1) 배지 요약.
                   const SizedBox(height: 32),
                 ],
               ),
@@ -144,12 +131,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
 
   Widget _buildHeader(String? libraryName) {
     // 편집 기능은 설정 화면으로 이동. 홈은 표시 전용.
-    // 작은 "묵책서가" 위 + 아래에 사용자가 설정한 도서관 이름(미설정 시 "나의 도서관").
+    // 작은 앱 이름 위 + 아래에 사용자가 설정한 컬렉션 이름.
+    // TODO: 문안 — '클래식 서가'는 임시 표시명. 확정 시 AndroidManifest의
+    //   android:label 과 함께 교체할 것 (pubspec name은 'mylibrary'로 별개 축).
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text(
-          '묵책서가',
+          '클래식 서가',
           style: TextStyle(
             color: Color(0xFFAA9F8F),
             fontSize: 12,
@@ -163,7 +152,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
           ),
         ),
         Text(
-          libraryName ?? '나의 도서관',
+          libraryName ?? '나의 컬렉션',
           style: const TextStyle(
             color: AppColors.cream,
             fontSize: 22,
@@ -182,14 +171,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
   }
 }
 
-// ── 오늘의 책 카드 ─────────────────────────────────────────────────────────────
+// ── 오늘의 음반 카드 ───────────────────────────────────────────────────────────
 
-class _TodayBookCard extends StatelessWidget {
-  final Book book;
-  const _TodayBookCard({required this.book});
+class _TodayAlbumCard extends StatelessWidget {
+  final AlbumSummary album;
+  const _TodayAlbumCard({required this.album});
 
   @override
   Widget build(BuildContext context) {
+    final subtitle = [
+      if (album.format != null && album.format!.isNotEmpty) album.format,
+      if (album.label != null && album.label!.isNotEmpty) album.label,
+      if (album.releaseYear != null) '${album.releaseYear}',
+    ].join(' · ');
+
     return Card(
       color: const Color(0xCC1A1915),
       elevation: 0,
@@ -199,19 +194,19 @@ class _TodayBookCard extends StatelessWidget {
       ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: () => context.push('/books/${book.localId}'),
+        onTap: () => context.push('/albums/${album.id}'),
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Row(
             children: [
-              _HomeCoverThumb(coverUrl: book.coverUrl, title: book.title),
+              _HomeCoverThumb(coverUrl: album.coverUrl, title: album.title),
               const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      '서가로부터 오늘의 추천',
+                      '오늘의 음반',
                       style: TextStyle(
                           color: AppColors.gold,
                           fontSize: 11,
@@ -220,7 +215,7 @@ class _TodayBookCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      book.title,
+                      album.title,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
@@ -230,7 +225,7 @@ class _TodayBookCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 3),
                     Text(
-                      book.author,
+                      album.primaryComposer ?? '작곡가 미상',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
@@ -238,9 +233,7 @@ class _TodayBookCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      book.location?.isNotEmpty == true
-                          ? '오늘 이 책은 어떤가요? · ${book.location}'
-                          : '오늘 이 책은 어떤가요?',
+                      subtitle.isEmpty ? '오늘 이 음반은 어떤가요?' : subtitle,
                       style: const TextStyle(
                           color: Color(0xFFAA9F8F), fontSize: 11),
                     ),
@@ -248,8 +241,7 @@ class _TodayBookCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 4),
-              const Icon(Icons.chevron_right,
-                  color: AppColors.dim, size: 18),
+              const Icon(Icons.chevron_right, color: AppColors.dim, size: 18),
             ],
           ),
         ),
@@ -262,10 +254,10 @@ class _TodayBookCard extends StatelessWidget {
 
 class _SummaryCard extends StatelessWidget {
   final int totalCount;
-  final int unreadCount;
+  final int compositionCount;
   const _SummaryCard({
     required this.totalCount,
-    required this.unreadCount,
+    required this.compositionCount,
   });
 
   @override
@@ -294,99 +286,18 @@ class _SummaryCard extends StatelessWidget {
                     text: '$totalCount',
                     style: const TextStyle(color: Color(0xFFD4784A)),
                   ),
-                  const TextSpan(text: '권'),
+                  const TextSpan(text: '장'),
                 ],
               ),
             ),
+            // book의 '미독 N권'을 대체. AlbumSummary에 청취 여부가 없어
+            // 집계 가능한 값 중 수록곡 총합을 쓴다.
             Text(
-              '미독 $unreadCount권',
+              '수록곡 $compositionCount곡',
               style: const TextStyle(
                   color: AppColors.gold, fontSize: 15),
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-// ── 기다린 지 오래된 책 카드 ───────────────────────────────────────────────────
-
-class _WishlistCard extends StatelessWidget {
-  final Book book;
-  const _WishlistCard({required this.book});
-
-  @override
-  Widget build(BuildContext context) {
-    final waitDays =
-        DateTime.now().difference(book.createdAt ?? DateTime.now()).inDays + 1;
-
-    return Card(
-      color: const Color(0xCC1A1915),
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: const BorderSide(color: Color(0x33C8A96E), width: 0.5),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: () => context.push('/books/${book.localId}'),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                '좀 오래 묵은 책',
-                style: TextStyle(
-                    color: AppColors.gold,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 0.5),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  _HomeCoverThumb(
-                      coverUrl: book.coverUrl, title: book.title),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          book.title,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                              color: AppColors.cream,
-                              fontSize: 15,
-                              fontWeight: FontWeight.w500),
-                        ),
-                        const SizedBox(height: 3),
-                        Text(
-                          book.author,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                              color: Color(0xFFAA9F8F), fontSize: 12),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          '$waitDays일째...',
-                          style: const TextStyle(
-                              color: Color(0xFFAA9F8F), fontSize: 11),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  const Icon(Icons.chevron_right,
-                      color: AppColors.dim, size: 18),
-                ],
-              ),
-            ],
-          ),
         ),
       ),
     );

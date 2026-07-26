@@ -35,11 +35,10 @@ class MainScaffold extends StatelessWidget {
             activeIcon: Icon(Icons.menu_book),
             label: '서가',
           ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.bar_chart_outlined),
-            activeIcon: Icon(Icons.bar_chart),
-            label: '통계',
-          ),
+          // TODO: 클래식 재작성 (2B)
+          //   '통계' 탭 제거 — stats_* 화면이 2A에서 삭제됐다.
+          //   BottomNavigationBar 항목 수는 app_router 의 StatefulShellBranch
+          //   개수와 반드시 같아야 하므로(불일치 시 런타임 크래시) 함께 뺐다.
           BottomNavigationBarItem(
             icon: Icon(Icons.settings_outlined),
             activeIcon: Icon(Icons.settings),

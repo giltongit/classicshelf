@@ -1,28 +1,21 @@
 import 'package:go_router/go_router.dart';
 
-import '../models/book.dart';
-import '../models/book_search_result.dart';
 import '../screens/add_book_screen.dart';
 import '../screens/book_detail_screen.dart';
 import '../screens/book_list_screen.dart';
-import '../screens/csv_import_screen.dart';
 import '../screens/home_screen.dart';
 import '../screens/main_scaffold.dart';
-import '../screens/scan_screen.dart';
 import '../screens/settings_screen.dart';
-import '../screens/stats_author_screen.dart';
-import '../screens/stats_genre_screen.dart';
-import '../screens/stats_monthly_screen.dart';
-import '../screens/stats_screen.dart';
-import '../screens/stats_wishlist_screen.dart';
-import '../screens/stats_year_screen.dart';
-import '../screens/book_search_screen.dart';
-import '../screens/unified_search_screen.dart';
+
+// TODO: 클래식 재작성 (2B)
+//   2A에서 제거한 라우트: /stats(+year/author/monthly/wishlist/genre),
+//   /search, /book-search, /scan, /csv-import.
+//   해당 화면 파일은 모두 삭제됨. 클래식 탭·라우트 구성은 2B에서 확정한다.
 
 final appRouter = GoRouter(
   initialLocation: '/home',
   routes: [
-    // ── 하단 탭 4개 (홈 / 서가 / 통계 / 설정) ────────────────────────────────
+    // ── 하단 탭 3개 (홈 / 서가 / 설정) ──────────────────────────────────────
     StatefulShellRoute.indexedStack(
       builder: (context, state, navigationShell) =>
           MainScaffold(navigationShell: navigationShell),
@@ -36,35 +29,7 @@ final appRouter = GoRouter(
         StatefulShellBranch(routes: [
           GoRoute(
             path: '/',
-            builder: (context, state) => const BookListScreen(),
-          ),
-        ]),
-        StatefulShellBranch(routes: [
-          GoRoute(
-            path: '/stats',
-            builder: (context, state) => const StatsScreen(),
-            routes: [
-              GoRoute(
-                path: 'year',
-                builder: (context, state) => const StatsYearScreen(),
-              ),
-              GoRoute(
-                path: 'author',
-                builder: (context, state) => const StatsAuthorScreen(),
-              ),
-              GoRoute(
-                path: 'monthly',
-                builder: (context, state) => const StatsMonthlyScreen(),
-              ),
-              GoRoute(
-                path: 'wishlist',
-                builder: (context, state) => const StatsWishlistScreen(),
-              ),
-              GoRoute(
-                path: 'genre',
-                builder: (context, state) => const StatsGenreScreen(),
-              ),
-            ],
+            builder: (context, state) => const AlbumListScreen(),
           ),
         ]),
         StatefulShellBranch(routes: [
@@ -77,42 +42,20 @@ final appRouter = GoRouter(
     ),
 
     // ── 탭 외부 라우트 (하단 탭 없음) ────────────────────────────────────────
+    // TODO: 클래식 등록 폼 (2B-2)
+    //   AddBookScreen이 스텁이라 extra(수정 대상·검색 결과)를 받지 않는다.
+    //   폼 재구현 시 앨범 id 또는 프리필 데이터를 넘기는 분기를 되살릴 것.
     GoRoute(
       path: '/add',
-      builder: (context, state) {
-        final extra = state.extra;
-        return AddBookScreen(
-          editBook:      extra is Book ? extra : null,
-          searchResult:  extra is BookSearchResult ? extra : null,
-        );
-      },
+      builder: (context, state) => const AddBookScreen(),
     ),
+    // 앨범 id는 클라이언트 생성 UUID(String)다. book 시절의 int localId 파싱을
+    // 그대로 두면 UUID에서 예외가 나므로 경로도 /albums/:id 로 옮겼다.
     GoRoute(
-      path: '/search',
-      builder: (context, state) {
-        final p = state.uri.queryParameters;
-        return UnifiedSearchScreen(
-          initialIsbn: p['isbn'],
-        );
-      },
-    ),
-    GoRoute(
-      path: '/book-search',
-      builder: (context, state) => const BookSearchScreen(),
-    ),
-    GoRoute(
-      path: '/scan',
-      builder: (context, state) => const ScanScreen(),
-    ),
-    GoRoute(
-      path: '/books/:id',
-      builder: (context, state) => BookDetailScreen(
-        localId: int.parse(state.pathParameters['id']!),
+      path: '/albums/:id',
+      builder: (context, state) => AlbumDetailScreen(
+        albumId: state.pathParameters['id']!,
       ),
-    ),
-    GoRoute(
-      path: '/csv-import',
-      builder: (context, state) => const CsvImportScreen(),
     ),
   ],
 );
