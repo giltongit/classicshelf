@@ -5,14 +5,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../database/app_database.dart';
-import '../models/book.dart';
-import '../models/book_filter.dart';
-import '../repositories/book_repository.dart';
-import '../repositories/book_repository_impl.dart';
+import '../models/album.dart';
+import '../models/album_filter.dart';
+import '../models/album_summary.dart';
+import '../repositories/collection_repository.dart';
+import '../repositories/collection_repository_impl.dart';
 import '../repositories/profile_repository.dart';
 import '../repositories/profile_repository_impl.dart';
 import '../services/auth_service.dart';
-import '../utils/my_tags.dart';
 
 final supabaseClientProvider = Provider<SupabaseClient>((ref) {
   return Supabase.instance.client;
@@ -28,17 +28,79 @@ final databaseProvider = Provider<AppDatabase>((ref) {
   return db;
 });
 
-final bookRepositoryProvider = Provider<BookRepository>((ref) {
-  return BookRepositoryImpl(
+final collectionRepositoryProvider = Provider<CollectionRepository>((ref) {
+  return CollectionRepositoryImpl(
     supabase: ref.watch(supabaseClientProvider),
     db: ref.watch(databaseProvider),
   );
 });
 
-/// 로컬 Drift에서 책 목록을 반환. invalidate() 로 갱신.
-final booksProvider = FutureProvider<List<Book>>((ref) {
-  return ref.watch(bookRepositoryProvider).getBooks();
+// ── 앨범 필터 상태 ─────────────────────────────────────────────────────────────
+// book의 BookFilterNotifier 대체. 메모리 필터(applyBookFilterAndSort)는 제거 —
+// 필터·정렬은 이제 리포지토리 쿼리(getAlbumSummaries)가 담당한다.
+
+class AlbumFilterNotifier extends Notifier<AlbumFilter> {
+  @override
+  AlbumFilter build() => AlbumFilter.empty;
+
+  void update(AlbumFilter f) => state = f;
+
+  void setQuery(String? q) => state = (q == null || q.trim().isEmpty)
+      ? state.copyWith(clearQuery: true)
+      : state.copyWith(query: q);
+
+  void setStatus(HoldingStatus? s) => state = s == null
+      ? state.copyWith(clearStatus: true)
+      : state.copyWith(status: s);
+
+  void setComposer(String? c) => state = (c == null || c.isEmpty)
+      ? state.copyWith(clearComposer: true)
+      : state.copyWith(composer: c);
+
+  void setFormat(String? f) => state = (f == null || f.isEmpty)
+      ? state.copyWith(clearFormat: true)
+      : state.copyWith(format: f);
+
+  void setSort(AlbumSort sort) => state = state.copyWith(sort: sort);
+
+  void setOnlyNeedsVerification(bool v) =>
+      state = state.copyWith(onlyNeedsVerification: v);
+
+  void reset() => state = AlbumFilter.empty;
+}
+
+final albumFilterProvider =
+    NotifierProvider<AlbumFilterNotifier, AlbumFilter>(AlbumFilterNotifier.new);
+
+// ── 앨범 목록 (reactive) ────────────────────────────────────────────────────────
+/// 필터를 watch → watchAlbumSummaries(Drift `.watch()`)에 주입.
+/// book의 booksProvider(FutureProvider + 수동 invalidate) 패턴을 대체 —
+/// 쓰기 시 Drift 변경 스트림이 자동 방출하므로 화면의 invalidate 호출이 사라진다.
+final albumSummariesProvider = StreamProvider<List<AlbumSummary>>((ref) {
+  final filter = ref.watch(albumFilterProvider);
+  return ref.watch(collectionRepositoryProvider).watchAlbumSummaries(filter);
 });
+
+/// 홈·전체집계용 — albumFilterProvider를 watch하지 않는다.
+/// 위 albumSummariesProvider를 홈에서 쓰면 서가 탭에서 건 필터가 홈 집계까지
+/// 좁혀버린다(전체 N장이 필터 결과 수로 표시됨). 목록과 집계는 구독을 분리한다.
+final allAlbumSummariesProvider = StreamProvider<List<AlbumSummary>>((ref) {
+  return ref
+      .watch(collectionRepositoryProvider)
+      .watchAlbumSummaries(AlbumFilter.empty);
+});
+
+// ── 앨범 단건 (상세) ────────────────────────────────────────────────────────────
+/// 상세 화면 — 앨범 애그리게이트 단건.
+/// write가 albums를 touch하면 목록(watch)은 자동 갱신되나, 상세는 진입 시
+/// 조회로 충분하다. 편집 후 갱신이 필요하면 화면에서
+/// ref.invalidate(albumDetailProvider(id)).
+final albumDetailProvider =
+    FutureProvider.family<Album?, String>((ref, albumId) {
+  return ref.watch(collectionRepositoryProvider).getAlbum(albumId);
+});
+
+// ── profile (book 무관 — 유지) ──────────────────────────────────────────────────
 
 final profileRepositoryProvider = Provider<ProfileRepository>((ref) {
   return ProfileRepositoryImpl(ref.watch(supabaseClientProvider));
@@ -83,141 +145,7 @@ final libraryNameProvider =
   LibraryNameNotifier.new,
 );
 
-// ── 책 필터/정렬 ───────────────────────────────────────────────────────────────
-
-String? bookGroupKey(String title) {
-  final trimmed = title.trimLeft();
-  if (trimmed.isEmpty) return null;
-  final code = trimmed.codeUnitAt(0);
-  // 한글 음절: 쌍자음 통합 (ㄲ→ㄱ, ㄸ→ㄷ, ㅃ→ㅂ, ㅆ→ㅅ, ㅉ→ㅈ)
-  if (code >= 0xAC00 && code <= 0xD7A3) {
-    const map = [
-      'ㄱ', 'ㄱ', 'ㄴ', 'ㄷ', 'ㄷ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅂ',
-      'ㅅ', 'ㅅ', 'ㅇ', 'ㅈ', 'ㅈ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ',
-    ];
-    return map[(code - 0xAC00) ~/ 588];
-  }
-  if ((code >= 65 && code <= 90) || (code >= 97 && code <= 122)) {
-    return trimmed[0].toUpperCase();
-  }
-  if (code >= 48 && code <= 57) return trimmed[0];
-  return null;
-}
-
-/// "내 분류" 태그를 kdc 대분류 키('0'~'9')별로 모은다 — 태그 입력 자동완성 소스.
-///
-/// 같은 대분류의 다른 책이 이미 쓴 태그를 제안해, 자유 텍스트인데도 표기가
-/// 흩어지는 것을 억제한다 (§26 "장르 종속 — 맥락 자동완성").
-/// kdc가 없는 책(미분류)의 태그는 빈 문자열 키에 모인다.
-Map<String, Set<String>> myTagsByKdcMain(List<Book> books) {
-  final result = <String, Set<String>>{};
-  for (final b in books) {
-    final tags = parseMyTags(b.genre);
-    if (tags.isEmpty) continue;
-    final kdc = b.effectiveKdc?.trim();
-    final key = (kdc != null && kdc.isNotEmpty) ? kdc[0] : '';
-    result.putIfAbsent(key, () => <String>{}).addAll(tags);
-  }
-  return result;
-}
-
-List<Book> applyBookFilterAndSort(List<Book> books, BookFilter filter) {
-  var result = books;
-
-  if (filter.searchQuery.isNotEmpty) {
-    final q = filter.searchQuery.toLowerCase();
-    result = result.where((b) =>
-      b.title.toLowerCase().contains(q) ||
-      b.author.toLowerCase().contains(q) ||
-      (b.location?.toLowerCase().contains(q) ?? false)
-    ).toList();
-  }
-
-  // 처분된 책 보기: 처분 이력 전용 뷰 — 다른 상태/속성/매체/위치 필터는 적용하지
-  // 않고 처분된 책만 배타적으로 보여준다 (결정: disposed 상태 §25 후속 확정).
-  final List<Book> filtered;
-  if (filter.showDisposed) {
-    filtered = result.where((b) => b.isDisposed).toList();
-  } else {
-    filtered = result.where((b) {
-      if (b.isDisposed) return false;
-      if (filter.statuses.isNotEmpty && !filter.statuses.contains(b.status)) {
-        return false;
-      }
-      if (filter.attributes.isNotEmpty) {
-        final match =
-            (filter.attributes.contains('priority') && b.priorityRead) ||
-            (filter.attributes.contains('read') && b.isRead) ||
-            (filter.attributes.contains('unread') && !b.isRead);
-        if (!match) return false;
-      }
-      if (filter.media.isNotEmpty && !filter.media.contains(b.medium)) {
-        return false;
-      }
-      if (filter.initial != null && bookGroupKey(b.title) != filter.initial) {
-        return false;
-      }
-      if (filter.locations.isNotEmpty &&
-          !filter.locations.contains(b.location)) {
-        return false;
-      }
-      if (filter.genres.isNotEmpty) {
-        final kdc = b.effectiveKdc?.trim();
-        final key = (kdc != null && kdc.isNotEmpty) ? kdc[0] : null;
-        if (key == null || !filter.genres.contains(key)) return false;
-      }
-      return true;
-    }).toList();
-  }
-
-  switch (filter.sortBy) {
-    case 'title':
-      filtered.sort((a, b) => a.title.compareTo(b.title));
-    case 'author':
-      filtered.sort((a, b) => a.author.compareTo(b.author));
-    case 'year':
-      filtered.sort((a, b) {
-        if (a.year == null) return 1;
-        if (b.year == null) return -1;
-        return b.year!.compareTo(a.year!);
-      });
-    case 'location':
-      filtered.sort(
-          (a, b) => (a.location ?? '').compareTo(b.location ?? ''));
-    default: // createdAt 내림차순
-      filtered.sort((a, b) {
-        final ca = a.createdAt, cb = b.createdAt;
-        if (ca == null && cb == null) return 0;
-        if (ca == null) return 1;
-        if (cb == null) return -1;
-        return cb.compareTo(ca);
-      });
-  }
-  return filtered;
-}
-
-class BookFilterNotifier extends Notifier<BookFilter> {
-  @override
-  BookFilter build() => const BookFilter();
-  void update(BookFilter f) => state = f;
-  void setSearchQuery(String q) =>
-      state = state.copyWith(searchQuery: q);
-  void setShowDisposed(bool v) =>
-      state = state.copyWith(showDisposed: v);
-}
-
-final bookFilterProvider =
-    NotifierProvider<BookFilterNotifier, BookFilter>(BookFilterNotifier.new);
-
-/// booksProvider(전체) + bookFilterProvider(조건) → 필터·정렬 적용 결과.
-/// booksAsync 상태(loading/error)는 그대로 전달되므로 .when() 패턴 유지 가능.
-final filteredBooksProvider = Provider<AsyncValue<List<Book>>>((ref) {
-  final booksAsync = ref.watch(booksProvider);
-  final filter = ref.watch(bookFilterProvider);
-  return booksAsync.whenData((books) => applyBookFilterAndSort(books, filter));
-});
-
-// ── Google 계정 연결 ────────────────────────────────────────────────────────────
+// ── Google 계정 연결 (book 무관 — 유지) ──────────────────────────────────────────
 
 class AuthNotifier extends AsyncNotifier<bool> {
   StreamSubscription<AuthState>? _sub;
