@@ -98,18 +98,27 @@ class AlbumListScreen extends ConsumerWidget {
             child: RefreshIndicator(
               color: AppColors.gold,
               backgroundColor: AppColors.surface2,
-              // TODO: syncFromRemote 구현 후 복원 (read/sync 경로)
-              //   collection_repository_impl.dart:867 이 아직 UnimplementedError를
-              //   던진다. 그대로 부르면 당겨서 새로고침이 예외로 끝나므로,
-              //   제스처는 살리고 안내만 띄운다.
-              //   목록 자체는 Drift watch가 자동 갱신하므로 지금 못 쓰는 건
-              //   "원격에서 끌어오기"뿐이다.
+              // 당겨서 새로고침 = 서버 → 로컬 동기화.
+              //   목록 자체는 Drift watch가 반영분을 자동으로 다시 그리므로
+              //   여기서 invalidate하지 않는다. 미전송 변경이 있는 앨범은
+              //   덮어쓰지 않고 건너뛰며, 그 수를 안내에 함께 보여준다.
               onRefresh: () async {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('서버 동기화 준비 중 (read/sync 경로 구현 예정)'),
-                  ),
-                );
+                final messenger = ScaffoldMessenger.of(context);
+                try {
+                  final r = await ref
+                      .read(collectionRepositoryProvider)
+                      .syncFromRemote();
+                  final pending = r.skippedPending > 0
+                      ? ' (미전송 ${r.skippedPending}장은 보류)'
+                      : '';
+                  messenger.showSnackBar(
+                    SnackBar(content: Text('${r.applied}장 동기화됨$pending')),
+                  );
+                } catch (e) {
+                  messenger.showSnackBar(
+                    SnackBar(content: Text('동기화 실패: $e')),
+                  );
+                }
               },
               child: albumsAsync.when(
                 loading: () => const Center(

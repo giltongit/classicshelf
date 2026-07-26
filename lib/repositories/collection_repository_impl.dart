@@ -20,6 +20,7 @@ import 'package:uuid/uuid.dart';
 
 import '../models/album.dart';
 import '../models/album_filter.dart';
+import '../models/model_utils.dart';
 import '../models/album_summary.dart';
 import '../models/wishlist_entry.dart';
 import '../database/app_database.dart';
@@ -862,14 +863,228 @@ class CollectionRepositoryImpl implements CollectionRepository {
         s.contains('No address associated with hostname');
   }
 
+  // ===========================================================================
+  // read/sync 경로 — 원격 → 로컬 미러링 + 원격 유실 복원
+  //
+  //   원칙: 서버 데이터는 로컬에 upsert만 한다. 원격 JSON에서 도메인을 조립해
+  //   화면에 바로 주는 경로를 만들지 않는다 — 조립은 getAlbum/getAlbumSummaries
+  //   한 곳에 갇혀 있어야 로컬/원격 출처가 같은 결과를 낸다.
+  //   충돌 규칙은 write 경로와 동일하게 Album 단위 LWW + replace-children.
+  // ===========================================================================
+
+  /// PostgREST 중첩 select — albums + 하위 전체를 한 번에.
+  static const String _remoteAlbumSelect =
+      '*, album_performers(*), compositions(*, movements(*), '
+      'composition_performers(*))';
+
+  /// sync_queue에 올라온 앨범 id 집합 = 미전송 로컬 변경 보호 대상.
+  /// entityId는 항상 앨범 id(하위 replace_children 스냅샷도 entityId=album.id).
+  /// wishlist는 독립 루트라 앨범 보호와 무관 → 제외.
+  Future<Set<String>> _pendingAlbumIds() async {
+    final rows = await _db.select(_db.syncQueue).get();
+    return rows
+        .where((r) => r.entityTable != 'wishlist')
+        .map((r) => r.entityId)
+        .toSet();
+  }
+
+  /// 내 albums + 하위 전체 조회. RLS(user_id = auth.uid())가 이미 걸려 있지만
+  /// 의도를 드러내려고 .eq를 명시한다.
+  Future<List<Map<String, dynamic>>> _fetchRemoteAlbums(String userId) async {
+    final rows = await _supabase
+        .from('albums')
+        .select(_remoteAlbumSelect)
+        .eq('user_id', userId);
+    return rows.map((r) => Map<String, dynamic>.from(r)).toList();
+  }
+
   @override
-  Future<void> syncFromRemote() async {
-    throw UnimplementedError('read/sync 경로(다음 단계)에서 구현');
+  Future<SyncResult> syncFromRemote() async {
+    final userId = _currentUserId();
+    if (userId.isEmpty) {
+      debugPrint('[SYNC] 세션 없음 → 스킵');
+      return (fetched: 0, applied: 0, skippedPending: 0);
+    }
+
+    // pending을 원격 조회보다 먼저 읽는다: 조회 중 새로 쌓인 큐 항목은
+    // 다음 sync가 잡으면 되지만, 이미 쌓여 있던 항목을 놓치면 덮어쓴다.
+    final pending = await _pendingAlbumIds();
+    final remote = await _fetchRemoteAlbums(userId);
+
+    var applied = 0;
+    var skipped = 0;
+    for (final row in remote) {
+      final albumId = row['id'] as String?;
+      if (albumId == null) continue;
+      if (pending.contains(albumId)) {
+        // 미전송 로컬 변경 보존 — flush가 서버로 올린 뒤 다음 sync에서 수신된다.
+        skipped++;
+        continue;
+      }
+      await _applyRemoteAlbumToLocal(row, userId);
+      applied++;
+    }
+
+    debugPrint('[SYNC] 수신 ${remote.length}건 / 반영 $applied / '
+        '보류 스킵 $skipped');
+    return (
+      fetched: remote.length,
+      applied: applied,
+      skippedPending: skipped,
+    );
+  }
+
+  /// 서버 앨범 1건(하위 포함) → 로컬 upsert + 하위 replace.
+  /// saveAlbum의 로컬 트랜잭션과 같은 패턴이며, 입력만 도메인이 아니라
+  /// snake_case Map이다(→ 도메인으로 되돌린 뒤 기존 Companion 매퍼 재사용).
+  Future<void> _applyRemoteAlbumToLocal(
+    Map<String, dynamic> row,
+    String fallbackUserId,
+  ) async {
+    final rowUserId = row['user_id'] as String?;
+    final userId =
+        (rowUserId != null && rowUserId.isNotEmpty) ? rowUserId : fallbackUserId;
+    final album = _albumFromRemoteRow(row);
+
+    await _db.transaction(() async {
+      // albums upsert — 서버 타임스탬프를 그대로 보존한다(로컬 now()로 덮지 않음).
+      await _db.into(_db.albums).insertOnConflictUpdate(
+            _albumToCompanion(
+              album,
+              userId,
+              createdAt: parseDate(row['created_at']),
+              updatedAt: parseDate(row['updated_at']),
+            ),
+          );
+
+      // 하위 replace. 로컬 FK PRAGMA가 꺼져 있어 cascade가 없으므로
+      // movements/composition_performers는 composition id로 명시 삭제한다.
+      // (삭제된 수록곡의 악장까지 지우려면 compositions 삭제 *전에* 기존 id를 모은다)
+      final oldCompIds = await _albumCompositionIds(album.id);
+      final allCompIds = {
+        ...oldCompIds,
+        ...album.compositions.map((c) => c.id),
+      }.toList();
+      if (allCompIds.isNotEmpty) {
+        await (_db.delete(_db.movements)
+              ..where((t) => t.compositionId.isIn(allCompIds)))
+            .go();
+        await (_db.delete(_db.compositionPerformers)
+              ..where((t) => t.compositionId.isIn(allCompIds)))
+            .go();
+      }
+      await (_db.delete(_db.compositions)
+            ..where((t) => t.albumId.equals(album.id)))
+          .go();
+      await (_db.delete(_db.albumPerformers)
+            ..where((t) => t.albumId.equals(album.id)))
+          .go();
+
+      for (final p in album.defaultPerformers) {
+        await _db.into(_db.albumPerformers).insert(
+              _albumPerformerCompanion(p, album.id, userId),
+            );
+      }
+      for (final c in album.compositions) {
+        await _db.into(_db.compositions).insert(
+              _compositionToCompanion(c, album.id, userId),
+            );
+        for (final m in c.movements) {
+          await _db.into(_db.movements).insert(
+                _movementToCompanion(m, c.id, userId),
+              );
+        }
+        if (c.hasPerformerOverride) {
+          for (final p in c.performerOverrides!) {
+            await _db.into(_db.compositionPerformers).insert(
+                  _compositionPerformerCompanion(p, c.id, userId),
+                );
+          }
+        }
+      }
+    });
+  }
+
+  /// 중첩 select 응답 1행 → 도메인 Album. 로컬 upsert 직전 단계일 뿐,
+  /// 이 결과가 화면으로 새어 나가지는 않는다(조립 경로는 getAlbum 하나).
+  Album _albumFromRemoteRow(Map<String, dynamic> row) {
+    final defaultPerformers = _mapList(row['album_performers'])
+        .map(Performer.fromJson)
+        .toList();
+
+    final compositions = _mapList(row['compositions']).map((cj) {
+      final movements = _mapList(cj['movements']).map(Movement.fromJson).toList()
+        ..sort((a, b) => a.seq.compareTo(b.seq));
+      final overrideRows = _mapList(cj['composition_performers']);
+      return Composition.fromJson(
+        cj,
+        movements: movements,
+        // 행이 없으면 null(=앨범 기본값 상속). 빈 리스트로 만들면 "명시적 override
+        // 없음"과 구분이 흐려지므로 null을 유지한다(getAlbum과 동일 규칙).
+        performerOverrides: overrideRows.isEmpty
+            ? null
+            : overrideRows.map(Performer.fromJson).toList(),
+      );
+    }).toList()
+      ..sort((a, b) => a.seq.compareTo(b.seq));
+
+    return Album.assemble(
+      albumJson: row,
+      defaultPerformers: defaultPerformers,
+      compositions: compositions,
+    );
+  }
+
+  /// 중첩 select의 자식 배열 → `List<Map<String, dynamic>>`.
+  List<Map<String, dynamic>> _mapList(dynamic v) {
+    if (v is! List) return const [];
+    return v
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
   }
 
   @override
   Future<void> reconcileLocalOnlyToRemote() async {
-    throw UnimplementedError('sync 경로(다음 단계)에서 구현');
+    final userId = _currentUserId();
+    if (userId.isEmpty) {
+      debugPrint('[RECONCILE] 세션 없음 → 스킵');
+      return;
+    }
+
+    final localRows = await _db.select(_db.albums).get();
+    final localIds = localRows.map((a) => a.id).toSet();
+    if (localIds.isEmpty) return;
+
+    final remoteRows =
+        await _supabase.from('albums').select('id').eq('user_id', userId);
+    final remoteIds = remoteRows.map((r) => r['id'] as String).toSet();
+    final pending = await _pendingAlbumIds();
+
+    // 대상 = 로컬에만 있는 앨범 − 큐에 있는 앨범.
+    //   · 서버에 이미 있으면 건드리지 않는다(보수적 — 서버가 최신일 수 있다).
+    //   · 큐에 있으면 flush가 올린다(중복 업로드 방지).
+    final targets = localIds.difference(remoteIds).difference(pending);
+    if (targets.isEmpty) {
+      debugPrint('[RECONCILE] 복원 대상 없음 (로컬 ${localIds.length} / '
+          '원격 ${remoteIds.length} / 큐 ${pending.length})');
+      return;
+    }
+
+    var restored = 0;
+    for (final id in targets) {
+      // 로컬에서 애그리게이트 조립 — 기존 read 경로 재사용.
+      final album = await getAlbum(id);
+      if (album == null) continue;
+      try {
+        await _pushAlbumToRemote(album, userId);
+        restored++;
+      } catch (e) {
+        // 1건 실패가 나머지를 막지 않게 한다. 다음 기동에서 다시 시도된다.
+        debugPrint('[RECONCILE] 복원 실패 id=$id: $e');
+      }
+    }
+    debugPrint('[RECONCILE] 복원 $restored / 대상 ${targets.length}건');
   }
 
   @override
@@ -939,7 +1154,16 @@ class CollectionRepositoryImpl implements CollectionRepository {
   // 주의: sync 필드(updatedAt)는 여기서 now()로 갱신(Album LWW 기준).
   //       하위 테이블엔 updatedAt이 없다(스키마상 albums에만 존재).
 
-  AlbumsCompanion _albumToCompanion(Album a, String userId) => AlbumsCompanion(
+  /// [createdAt]/[updatedAt]은 원격 미러링 전용 — 서버 타임스탬프를 그대로 옮긴다.
+  /// 로컬 쓰기 경로는 넘기지 않으며, 그때 updatedAt은 now()(Album LWW 기준)다.
+  /// createdAt 미지정 시 absent → 신규는 DB 기본값, 기존 행은 값 보존.
+  AlbumsCompanion _albumToCompanion(
+    Album a,
+    String userId, {
+    DateTime? createdAt,
+    DateTime? updatedAt,
+  }) =>
+      AlbumsCompanion(
         id: Value(a.id),
         userId: Value(userId),
         title: Value(a.title),
@@ -953,7 +1177,9 @@ class CollectionRepositoryImpl implements CollectionRepository {
         review: Value(a.review),
         acquiredAt: Value(a.acquiredAt),
         disposedAt: Value(a.disposedAt),
-        updatedAt: Value(DateTime.now()),
+        createdAt:
+            createdAt == null ? const Value.absent() : Value(createdAt),
+        updatedAt: Value(updatedAt ?? DateTime.now()),
       );
 
   CompositionsCompanion _compositionToCompanion(

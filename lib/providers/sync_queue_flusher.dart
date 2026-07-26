@@ -34,14 +34,9 @@ class SyncQueueFlusher extends AsyncNotifier<void> {
         debugPrint('[QUEUE] 앱 시작 flush 오류: $e');
       }
 
-      // uid 확보 직후 1회 — 원격 유실 행 복원 (fire-and-forget, 앱 기동 비차단).
-      // 로컬 Drift는 그대로이므로(원격에만 재삽입) 목록 invalidate 불필요.
-      ref
-          .read(collectionRepositoryProvider)
-          .reconcileLocalOnlyToRemote()
-          .catchError((Object e) {
-        debugPrint('[RECONCILE] 앱 시작 복원 오류: $e');
-      });
+      // uid 확보 직후 1회 — 서버 최신 수신 → 원격 유실 행 복원.
+      // fire-and-forget(앱 기동 비차단)이되 둘의 순서는 보장한다(아래 주석 참조).
+      unawaited(_syncThenReconcile());
     }
 
     // 온라인 복귀 감지 → flush
@@ -55,6 +50,29 @@ class SyncQueueFlusher extends AsyncNotifier<void> {
         }
       },
     );
+  }
+
+  /// 앱 시작 시 flush 이후 단계: 서버 최신 수신 → 로컬 전용 앨범 복원.
+  ///
+  /// 순서가 의미를 갖는다: flush가 먼저 큐를 비워야 syncFromRemote가 그 앨범을
+  /// "미전송 변경"으로 건너뛰지 않고 받고, reconcile은 그러고도 서버에 없는
+  /// 앨범만 남게 되어 중복 업로드가 없다.
+  /// 실패는 삼킨다 — 다음 기동/온라인 복귀에서 다시 시도되는 성격의 작업이다.
+  /// 로컬 목록은 Drift watch가 알아서 갱신하므로 invalidate 불필요.
+  Future<void> _syncThenReconcile() async {
+    final repo = ref.read(collectionRepositoryProvider);
+    try {
+      final r = await repo.syncFromRemote();
+      debugPrint('[SYNC] 앱 시작 — 수신 ${r.fetched}건 / 반영 ${r.applied} / '
+          '보류 스킵 ${r.skippedPending}');
+    } catch (e) {
+      debugPrint('[SYNC] 앱 시작 동기화 오류: $e');
+    }
+    try {
+      await repo.reconcileLocalOnlyToRemote();
+    } catch (e) {
+      debugPrint('[RECONCILE] 앱 시작 복원 오류: $e');
+    }
   }
 
   /// 앱 포그라운드 복귀 등 외부에서 flush를 트리거할 때 호출.

@@ -23,6 +23,16 @@ typedef FlushResult = ({
   int dnsFailures,
 });
 
+/// syncFromRemote(원격→로컬) 결과 통계. 화면(당겨서 새로고침)이 표시한다.
+///   fetched        : 서버에서 받은 앨범 수
+///   applied        : 로컬에 반영(upsert + 하위 replace)한 앨범 수
+///   skippedPending : sync_queue에 미전송 변경이 있어 덮어쓰지 않고 건너뛴 앨범 수
+typedef SyncResult = ({
+  int fetched,
+  int applied,
+  int skippedPending,
+});
+
 /// 저장된 애그리게이트 반환값. book처럼 서버 id를 되돌려줄 필요가 없어
 /// 도메인 Album을 그대로 반환한다(로컬=원격 동일 id).
 abstract interface class CollectionRepository {
@@ -55,7 +65,9 @@ abstract interface class CollectionRepository {
 
   // ── 원격 동기화 ──────────────────────────────────────────────────────────
   /// Supabase 전체 조회 → Drift 미러링(id 기준 upsert). 초기 로그인/전체 새로고침.
-  Future<void> syncFromRemote();
+  /// sync_queue에 미전송 변경이 있는 앨범은 건너뛴다(오프라인 편집 유실 방지).
+  /// 서버 데이터는 로컬에 넣기만 하고, 도메인 조립은 로컬 read(getAlbum 등)가 맡는다.
+  Future<SyncResult> syncFromRemote();
 
   /// sync_queue를 entityTable 우선순위 + 방향(insert/delete)에 따라 flush.
   Future<FlushResult> flushSyncQueue();
