@@ -52,3 +52,6 @@ env/*.json
 .Rhistory
 .RData
 .Rproj.user/
+
+# 구 사양 문서 (v04로 대체 — 로컬 참조용으로만 보관)
+아키텍처_v03.md
