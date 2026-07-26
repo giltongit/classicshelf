@@ -8,8 +8,9 @@
     <!-- image_picker: 갤러리 접근 (Android 12 이하) -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32"/>
 
+    <!-- android:label은 임시 문안. 앱 표시명 확정 시 교체 (home_screen 헤더와 함께) -->
     <application
-        android:label="mylibrary"
+        android:label="클래식 서가"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:usesCleartextTraffic="true">
@@ -34,13 +35,17 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
-            <!-- Supabase OAuth deep link: Google 계정 연결 후 앱 복귀 -->
+            <!-- Supabase OAuth deep link: Google 계정 연결 후 앱 복귀.
+                 스킴은 구 도서 앱(io.supabase.mylibrary)과 반드시 달라야 한다 —
+                 두 앱이 같은 스킴을 등록하면 브라우저 복귀가 엉뚱한 앱으로 간다.
+                 auth_service.dart의 redirectTo와 Supabase 대시보드
+                 Redirect URLs 세 곳이 항상 같은 값이어야 한다. -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data
-                    android:scheme="io.supabase.mylibrary"
+                    android:scheme="io.supabase.classicshelf"
                     android:host="login-callback" />
             </intent-filter>
         </activity>

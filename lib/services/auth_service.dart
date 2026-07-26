@@ -38,13 +38,17 @@ class AuthService {
   /// 익명 계정 → Google 계정 연결 (브라우저 redirect 방식).
   ///
   /// linkIdentity 호출 시 브라우저가 열리고 Google 로그인 후
-  /// io.supabase.mylibrary://login-callback 으로 돌아옴.
+  /// io.supabase.classicshelf://login-callback 으로 돌아옴.
   /// 실제 연결 완료는 deep link 처리 후 onAuthStateChange 이벤트로 확인.
   /// 기존 익명 user_id 유지됨 (signInWithIdToken과 달리).
+  ///
+  /// 이 스킴은 AndroidManifest.xml의 intent-filter, Supabase 대시보드의
+  /// Redirect URLs 와 항상 같아야 한다. 하나라도 어긋나면 연결이
+  /// redirect_to is not allowed 로 거부된다.
   Future<void> linkGoogle() async {
     await Supabase.instance.client.auth.linkIdentity(
       OAuthProvider.google,
-      redirectTo: 'io.supabase.mylibrary://login-callback',
+      redirectTo: 'io.supabase.classicshelf://login-callback',
     );
   }
 }
