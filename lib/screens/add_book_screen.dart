@@ -2,17 +2,20 @@
 // add_book_screen.dart — 음반 등록 폼 (2B-2a 뼈대)
 //   파일명은 라우팅 참조를 줄이려고 유지, 클래스는 AddAlbumScreen.
 //
-// 범위(2B-2a): Step 1·2·4 + 최소 Step 3(수록곡 카드 N개) + 저장.
-//   목표는 "최소한의 앨범이 실제로 저장되어 목록·상세에 뜨고,
-//   saveAlbum → flush → 서버 순환이 실데이터로 검증되는 것".
+// 범위: Step 1·2·4 + 최소 Step 3(수록곡 카드 N개) + 저장 + 편집 모드(2B-2b-①).
 //
 // 설계 전제(확정):
 //   · AlbumDraft 계층을 두지 않는다 — 화면 상태에서 바로 Album 애그리게이트를
 //     조립해 saveAlbum에 넘긴다. (Draft는 대 2 자동입력에서 필요해지면)
-//   · 클라이언트 UUID는 화면에서 생성한다. 연주자·수록곡은 행/카드를 추가하는
-//     그 자리에서 id를 확정하고, 앨범 id는 저장 시점에 발급한다.
-//   · 신규 등록 전용. 모든 수록곡은 앨범 기본 연주자를 상속한다
+//   · 모든 수록곡은 앨범 기본 연주자를 상속한다
 //     (performerOverrides = null — 빈 리스트가 아니다. §3-2 상속 규칙).
+//
+// 신규/편집 한 화면 (albumId != null 이면 편집):
+//   · id 보존이 결정적이다. 편집 모드는 pre-fill한 Album/Composition/Performer의
+//     id를 전부 그대로 실어 saveAlbum에 넘긴다 — saveAlbum이
+//     insertOnConflictUpdate + 하위 replace라 같은 id면 수정으로 처리된다.
+//     id를 새로 뽑으면 같은 앨범이 하나 더 생긴다.
+//   · 편집 중 새로 추가한 행/카드만 uuid.v4()를 받는다(생성자 분리).
 //
 // UI: 스텝퍼 대신 단일 스크롤 + 섹션 헤더 4개(뼈대 단계라 단순하게).
 // =============================================================================
@@ -32,7 +35,10 @@ const _uuid = Uuid();
 const _formats = ['CD', 'LP', 'SACD', 'digital'];
 
 class AddAlbumScreen extends ConsumerStatefulWidget {
-  const AddAlbumScreen({super.key});
+  /// null이면 신규 등록, 값이 있으면 그 앨범의 편집 모드.
+  final String? albumId;
+
+  const AddAlbumScreen({super.key, this.albumId});
 
   @override
   ConsumerState<AddAlbumScreen> createState() => _AddAlbumScreenState();
@@ -50,15 +56,88 @@ class _AddAlbumScreenState extends ConsumerState<AddAlbumScreen> {
   final List<_PerformerRow> _performers = [];
 
   // ── Step 3. 수록곡 ──
-  // 빈 카드 하나로 시작한다. 끝까지 비어 있으면 저장 시 조용히 버린다.
-  final List<_CompositionCard> _compositions = [_CompositionCard()];
+  // 신규는 빈 카드 하나로 시작한다(편집은 pre-fill이 채운다).
+  final List<_CompositionCard> _compositions = [];
 
   // ── Step 4. 사용자 정보 ──
   DateTime? _acquiredAt;
   final _location = TextEditingController();
   final _review = TextEditingController();
 
+  // 폼에 입력란이 없는 필드 — 편집 시 기존 값을 그대로 보존한다.
+  // saveAlbum은 Album 통째로 덮어쓰므로(LWW), 여기서 들고 있지 않으면
+  // 편집 저장 한 번에 커버·바코드·처분 상태가 null로 지워진다.
+  // LWW 통째 덮어쓰기: 폼에 노출 안 된 필드도 pre-fill 값을 실어야 유실 안 됨.
+  //   필드 추가 시 이 패턴 유지할 것.
+  String? _coverUrl;
+  String? _barcode;
+  DateTime? _disposedAt;
+
+  /// 저장에 쓸 앨범 id. 편집이면 기존 id, 신규면 진입 시 발급한 uuid.
+  /// 진입 시 한 번만 정하는 이유: 저장 실패 후 재시도해도 같은 id여야
+  /// 서버 upsert가 멱등하다(중복 앨범 방지).
+  late final String _albumId;
+  bool get _isEditing => widget.albumId != null;
+
   bool _saving = false;
+  bool _loading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _albumId = widget.albumId ?? _uuid.v4();
+    if (_isEditing) {
+      _loading = true;
+      _loadForEdit(widget.albumId!);
+    } else {
+      _compositions.add(_CompositionCard());
+    }
+  }
+
+  /// 편집 진입 — 로컬에서 애그리게이트를 읽어 폼을 채운다.
+  /// 조회 경로는 getAlbum 하나뿐이라 상세 화면과 같은 값을 본다.
+  Future<void> _loadForEdit(String id) async {
+    Album? album;
+    try {
+      album = await ref.read(collectionRepositoryProvider).getAlbum(id);
+    } catch (e) {
+      debugPrint('[FORM] 편집 로드 실패 id=$id: $e');
+    }
+    if (!mounted) return;
+
+    if (album == null) {
+      // 로컬에 없는 앨범 — 안내 후 되돌아간다.
+      setState(() => _loading = false);
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('앨범을 찾을 수 없습니다')));
+      Navigator.of(context).pop();
+      return;
+    }
+
+    setState(() {
+      _title.text = album!.title;
+      _label.text = album.label ?? '';
+      _releaseYear.text = album.releaseYear?.toString() ?? '';
+      _discCount.text = album.discCount.toString();
+      _format = album.format;
+      _acquiredAt = album.acquiredAt;
+      _location.text = album.location ?? '';
+      _review.text = album.review ?? '';
+      _coverUrl = album.coverUrl;
+      _barcode = album.barcode;
+      _disposedAt = album.disposedAt;
+
+      // 기존 id를 그대로 물고 오는 생성자 — 저장 시 수정으로 처리되게 한다.
+      _performers.addAll(album.defaultPerformers.map(_PerformerRow.existing));
+      _compositions.addAll(
+        ([...album.compositions]..sort((a, b) => a.seq.compareTo(b.seq)))
+            .map(_CompositionCard.existing),
+      );
+      // 수록곡이 없던 앨범이면 빈 카드 하나를 띄워 입력을 유도한다.
+      if (_compositions.isEmpty) _compositions.add(_CompositionCard());
+      _loading = false;
+    });
+  }
 
   @override
   void dispose() {
@@ -91,17 +170,15 @@ class _AddAlbumScreenState extends ConsumerState<AddAlbumScreen> {
       return;
     }
 
-    // 수록곡 조립 — 완전히 빈 카드는 버리고, 내용은 있는데 작곡가만 빈 카드는 막는다.
-    // (조용히 버리면 사용자가 입력한 정보가 소리 없이 사라진다)
+    // 수록곡 조립 — 작곡가가 빈 카드는 조용히 제외한다(오류로 막지 않는다).
+    // 빈 카드 하나로 시작하는 UI라, 그걸 오류로 세우면 정상 흐름이 막힌다.
+    // 대신 유효한 곡이 0개면 아래에서 한 번만 명확히 안내한다.
     final compositions = <Composition>[];
-    for (var i = 0; i < _compositions.length; i++) {
-      final card = _compositions[i];
-      if (card.isBlank) continue;
+    var droppedPartial = 0; // 뭔가 입력했는데 작곡가가 없어 빠진 카드 수
+    for (final card in _compositions) {
       if (card.composer.text.trim().isEmpty) {
-        messenger.showSnackBar(
-          SnackBar(content: Text('${i + 1}번째 수록곡의 작곡가를 입력해 주세요')),
-        );
-        return;
+        if (!card.isBlank) droppedPartial++;
+        continue;
       }
       compositions.add(Composition(
         id: card.id,
@@ -129,19 +206,31 @@ class _AddAlbumScreenState extends ConsumerState<AddAlbumScreen> {
             ))
         .toList();
 
+    // 음반은 곡이 있어야 의미가 있다 — 유효한 수록곡 0개는 저장하지 않는다.
+    if (compositions.isEmpty) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('수록곡을 하나 이상 입력해 주세요')),
+      );
+      return;
+    }
+
     final album = Album(
-      id: _uuid.v4(), // 앨범 id는 저장 시점에 확정
+      id: _albumId, // 편집이면 기존 id — saveAlbum이 수정으로 처리한다
       title: title,
       label: _nullIfEmpty(_label.text),
       releaseYear: int.tryParse(_releaseYear.text.trim()),
       discCount: int.tryParse(_discCount.text.trim()) ?? 1,
       format: _format,
-      barcode: null, // TODO: 2B-2b — 바코드 스캔(§4-3 중복 감지)
-      coverUrl: null, // TODO: 2B-2b — 커버 촬영·업로드
+      // TODO: 2B-2b — 바코드 스캔(§4-3) · 커버 촬영·업로드
+      //   입력란은 아직 없고, 편집 시 기존 값을 잃지 않게 그대로 싣는다.
+      barcode: _barcode,
+      coverUrl: _coverUrl,
       location: _nullIfEmpty(_location.text),
       review: _nullIfEmpty(_review.text),
       acquiredAt: _acquiredAt,
-      disposedAt: null, // 등록 시점은 언제나 소장중 (§6-2)
+      // 신규는 언제나 소장중(null). 편집은 기존 처분 상태를 보존한다(§6-2).
+      // TODO: 2B-2b — 처분·분실 전환 UI
+      disposedAt: _disposedAt,
       defaultPerformers: performers,
       compositions: compositions,
     );
@@ -151,9 +240,16 @@ class _AddAlbumScreenState extends ConsumerState<AddAlbumScreen> {
       // 오프라인이어도 로컬 커밋 후 큐에 쌓이므로 여기서 온라인을 따지지 않는다.
       await ref.read(collectionRepositoryProvider).saveAlbum(album);
       if (!mounted) return;
-      // 목록은 albumSummariesProvider(Drift watch)라 invalidate 없이 갱신된다.
+      // 목록은 albumSummariesProvider(Drift watch)라 자동 갱신되지만,
+      // 상세는 FutureProvider.family(진입 시 1회 조회)라 직접 무효화해야
+      // 수정 결과가 보인다.
+      if (_isEditing) ref.invalidate(albumDetailProvider(_albumId));
       navigator.pop();
-      messenger.showSnackBar(SnackBar(content: Text('「$title」 등록됨')));
+      final dropped =
+          droppedPartial > 0 ? ' (작곡가 없는 수록곡 $droppedPartial개 제외)' : '';
+      messenger.showSnackBar(SnackBar(
+        content: Text('「$title」 ${_isEditing ? '수정' : '등록'}됨$dropped'),
+      ));
     } catch (e) {
       if (!mounted) return;
       setState(() => _saving = false);
@@ -184,9 +280,18 @@ class _AddAlbumScreenState extends ConsumerState<AddAlbumScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_loading) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('음반 수정')),
+        body: const Center(
+          child: CircularProgressIndicator(color: AppColors.gold),
+        ),
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('음반 등록'),
+        title: Text(_isEditing ? '음반 수정' : '음반 등록'),
         actions: [
           TextButton(
             onPressed: _saving ? null : _save,
@@ -523,20 +628,46 @@ String _roleLabel(PerformerRole r) => switch (r) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _PerformerRow {
-  final String id = _uuid.v4();
-  PerformerRole role = PerformerRole.conductor;
+  final String id;
+  PerformerRole role;
   final TextEditingController name = TextEditingController();
+
+  /// 새로 추가한 행 — 여기서 id가 확정된다.
+  _PerformerRow()
+      : id = _uuid.v4(),
+        role = PerformerRole.conductor;
+
+  /// 편집 pre-fill — 기존 행의 id를 물고 온다.
+  _PerformerRow.existing(Performer p)
+      : id = p.id,
+        role = p.role {
+    name.text = p.name;
+  }
 
   void dispose() => name.dispose();
 }
 
 class _CompositionCard {
-  final String id = _uuid.v4();
+  final String id;
   final TextEditingController composer = TextEditingController();
   final TextEditingController catalogNumber = TextEditingController();
   final TextEditingController discNo = TextEditingController();
   final TextEditingController trackFrom = TextEditingController();
   final TextEditingController trackTo = TextEditingController();
+
+  /// 새로 추가한 카드 — 여기서 id가 확정된다.
+  _CompositionCard() : id = _uuid.v4();
+
+  /// 편집 pre-fill — 기존 수록곡의 id를 물고 온다.
+  /// 이 id가 유지되어야 저장 시 같은 행을 수정하고, 카드를 지우면
+  /// 하위(악장·곡별 연주자)까지 고아 없이 함께 삭제된다.
+  _CompositionCard.existing(Composition c) : id = c.id {
+    composer.text = c.composer;
+    catalogNumber.text = c.catalogNumber ?? '';
+    discNo.text = c.discNo?.toString() ?? '';
+    trackFrom.text = c.trackFrom?.toString() ?? '';
+    trackTo.text = c.trackTo?.toString() ?? '';
+  }
 
   /// 아무것도 입력하지 않은 카드 — 저장 시 조용히 버린다.
   bool get isBlank =>

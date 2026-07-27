@@ -42,12 +42,15 @@ final appRouter = GoRouter(
     ),
 
     // ── 탭 외부 라우트 (하단 탭 없음) ────────────────────────────────────────
-    // TODO: 2B-2b — 편집 모드
-    //   지금은 신규 등록 전용이라 extra(수정 대상 앨범·검색 결과 프리필)를 받지 않는다.
-    //   편집을 붙일 때 앨범 id를 넘기는 분기를 되살릴 것.
+    // 등록·편집 공용. ?albumId=… 가 붙으면 편집 모드로 pre-fill 한다.
+    //   extra 대신 쿼리 파라미터를 쓰는 이유: 딥링크·복원에서 살아남고,
+    //   폼이 필요한 건 id 하나뿐이라 객체를 넘길 이유가 없다(로컬에서 다시 읽는다).
+    // TODO: 2B-2b — 검색 결과 프리필(대 2 자동입력)이 생기면 그때 extra 분기 추가.
     GoRoute(
       path: '/add',
-      builder: (context, state) => const AddAlbumScreen(),
+      builder: (context, state) => AddAlbumScreen(
+        albumId: state.uri.queryParameters['albumId'],
+      ),
     ),
     // 앨범 id는 클라이언트 생성 UUID(String)다. book 시절의 int localId 파싱을
     // 그대로 두면 UUID에서 예외가 나므로 경로도 /albums/:id 로 옮겼다.
