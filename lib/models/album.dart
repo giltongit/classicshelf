@@ -138,6 +138,11 @@ class Movement {
 class Composition {
   final String id;
   final String? workId; // 정규 작품 참조. null = 미매칭(§3-4)
+
+  /// 사용자가 적는 자유 텍스트 작품 제목. workId와 공존한다(대체 아님).
+  /// 매칭이 붙어도 보존한다 — 발췌·편곡판 등 음반 고유 정보가 여기 남는다.
+  final String? title;
+
   final String composer;
   final String? catalogNumber; // BWV/K./Op.
   final int? discNo;
@@ -153,6 +158,7 @@ class Composition {
   const Composition({
     required this.id,
     this.workId,
+    this.title,
     required this.composer,
     this.catalogNumber,
     this.discNo,
@@ -187,6 +193,7 @@ class Composition {
   Composition copyWith({
     String? workId,
     bool setWorkIdNull = false,
+    String? title,
     String? composer,
     String? catalogNumber,
     int? discNo,
@@ -201,6 +208,7 @@ class Composition {
       Composition(
         id: id,
         workId: setWorkIdNull ? null : (workId ?? this.workId),
+        title: title ?? this.title,
         composer: composer ?? this.composer,
         catalogNumber: catalogNumber ?? this.catalogNumber,
         discNo: discNo ?? this.discNo,
@@ -221,6 +229,7 @@ class Composition {
       Composition(
         id: j['id'] as String,
         workId: j['work_id'] as String?,
+        title: j['title'] as String?,
         composer: j['composer'] as String,
         catalogNumber: j['catalog_number'] as String?,
         discNo: j['disc_no'] as int?,
@@ -237,6 +246,7 @@ class Composition {
   Map<String, dynamic> toJson() => {
         'id': id,
         'work_id': workId,
+        'title': title,
         'composer': composer,
         'catalog_number': catalogNumber,
         'disc_no': discNo,

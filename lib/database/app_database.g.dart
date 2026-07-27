@@ -2610,6 +2610,15 @@ class $CompositionsTable extends Compositions
       'REFERENCES works (id)',
     ),
   );
+  static const VerificationMeta _titleMeta = const VerificationMeta('title');
+  @override
+  late final GeneratedColumn<String> title = GeneratedColumn<String>(
+    'title',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _composerMeta = const VerificationMeta(
     'composer',
   );
@@ -2703,6 +2712,7 @@ class $CompositionsTable extends Compositions
     userId,
     albumId,
     workId,
+    title,
     composer,
     catalogNumber,
     discNo,
@@ -2749,6 +2759,12 @@ class $CompositionsTable extends Compositions
       context.handle(
         _workIdMeta,
         workId.isAcceptableOrUnknown(data['work_id']!, _workIdMeta),
+      );
+    }
+    if (data.containsKey('title')) {
+      context.handle(
+        _titleMeta,
+        title.isAcceptableOrUnknown(data['title']!, _titleMeta),
       );
     }
     if (data.containsKey('composer')) {
@@ -2829,6 +2845,10 @@ class $CompositionsTable extends Compositions
         DriftSqlType.string,
         data['${effectivePrefix}work_id'],
       ),
+      title: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}title'],
+      ),
       composer: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}composer'],
@@ -2875,6 +2895,7 @@ class CompositionData extends DataClass implements Insertable<CompositionData> {
   final String userId;
   final String albumId;
   final String? workId;
+  final String? title;
   final String composer;
   final String? catalogNumber;
   final int? discNo;
@@ -2888,6 +2909,7 @@ class CompositionData extends DataClass implements Insertable<CompositionData> {
     required this.userId,
     required this.albumId,
     this.workId,
+    this.title,
     required this.composer,
     this.catalogNumber,
     this.discNo,
@@ -2905,6 +2927,9 @@ class CompositionData extends DataClass implements Insertable<CompositionData> {
     map['album_id'] = Variable<String>(albumId);
     if (!nullToAbsent || workId != null) {
       map['work_id'] = Variable<String>(workId);
+    }
+    if (!nullToAbsent || title != null) {
+      map['title'] = Variable<String>(title);
     }
     map['composer'] = Variable<String>(composer);
     if (!nullToAbsent || catalogNumber != null) {
@@ -2933,6 +2958,9 @@ class CompositionData extends DataClass implements Insertable<CompositionData> {
       workId: workId == null && nullToAbsent
           ? const Value.absent()
           : Value(workId),
+      title: title == null && nullToAbsent
+          ? const Value.absent()
+          : Value(title),
       composer: Value(composer),
       catalogNumber: catalogNumber == null && nullToAbsent
           ? const Value.absent()
@@ -2962,6 +2990,7 @@ class CompositionData extends DataClass implements Insertable<CompositionData> {
       userId: serializer.fromJson<String>(json['userId']),
       albumId: serializer.fromJson<String>(json['albumId']),
       workId: serializer.fromJson<String?>(json['workId']),
+      title: serializer.fromJson<String?>(json['title']),
       composer: serializer.fromJson<String>(json['composer']),
       catalogNumber: serializer.fromJson<String?>(json['catalogNumber']),
       discNo: serializer.fromJson<int?>(json['discNo']),
@@ -2980,6 +3009,7 @@ class CompositionData extends DataClass implements Insertable<CompositionData> {
       'userId': serializer.toJson<String>(userId),
       'albumId': serializer.toJson<String>(albumId),
       'workId': serializer.toJson<String?>(workId),
+      'title': serializer.toJson<String?>(title),
       'composer': serializer.toJson<String>(composer),
       'catalogNumber': serializer.toJson<String?>(catalogNumber),
       'discNo': serializer.toJson<int?>(discNo),
@@ -2996,6 +3026,7 @@ class CompositionData extends DataClass implements Insertable<CompositionData> {
     String? userId,
     String? albumId,
     Value<String?> workId = const Value.absent(),
+    Value<String?> title = const Value.absent(),
     String? composer,
     Value<String?> catalogNumber = const Value.absent(),
     Value<int?> discNo = const Value.absent(),
@@ -3009,6 +3040,7 @@ class CompositionData extends DataClass implements Insertable<CompositionData> {
     userId: userId ?? this.userId,
     albumId: albumId ?? this.albumId,
     workId: workId.present ? workId.value : this.workId,
+    title: title.present ? title.value : this.title,
     composer: composer ?? this.composer,
     catalogNumber: catalogNumber.present
         ? catalogNumber.value
@@ -3026,6 +3058,7 @@ class CompositionData extends DataClass implements Insertable<CompositionData> {
       userId: data.userId.present ? data.userId.value : this.userId,
       albumId: data.albumId.present ? data.albumId.value : this.albumId,
       workId: data.workId.present ? data.workId.value : this.workId,
+      title: data.title.present ? data.title.value : this.title,
       composer: data.composer.present ? data.composer.value : this.composer,
       catalogNumber: data.catalogNumber.present
           ? data.catalogNumber.value
@@ -3048,6 +3081,7 @@ class CompositionData extends DataClass implements Insertable<CompositionData> {
           ..write('userId: $userId, ')
           ..write('albumId: $albumId, ')
           ..write('workId: $workId, ')
+          ..write('title: $title, ')
           ..write('composer: $composer, ')
           ..write('catalogNumber: $catalogNumber, ')
           ..write('discNo: $discNo, ')
@@ -3066,6 +3100,7 @@ class CompositionData extends DataClass implements Insertable<CompositionData> {
     userId,
     albumId,
     workId,
+    title,
     composer,
     catalogNumber,
     discNo,
@@ -3083,6 +3118,7 @@ class CompositionData extends DataClass implements Insertable<CompositionData> {
           other.userId == this.userId &&
           other.albumId == this.albumId &&
           other.workId == this.workId &&
+          other.title == this.title &&
           other.composer == this.composer &&
           other.catalogNumber == this.catalogNumber &&
           other.discNo == this.discNo &&
@@ -3098,6 +3134,7 @@ class CompositionsCompanion extends UpdateCompanion<CompositionData> {
   final Value<String> userId;
   final Value<String> albumId;
   final Value<String?> workId;
+  final Value<String?> title;
   final Value<String> composer;
   final Value<String?> catalogNumber;
   final Value<int?> discNo;
@@ -3112,6 +3149,7 @@ class CompositionsCompanion extends UpdateCompanion<CompositionData> {
     this.userId = const Value.absent(),
     this.albumId = const Value.absent(),
     this.workId = const Value.absent(),
+    this.title = const Value.absent(),
     this.composer = const Value.absent(),
     this.catalogNumber = const Value.absent(),
     this.discNo = const Value.absent(),
@@ -3127,6 +3165,7 @@ class CompositionsCompanion extends UpdateCompanion<CompositionData> {
     required String userId,
     required String albumId,
     this.workId = const Value.absent(),
+    this.title = const Value.absent(),
     required String composer,
     this.catalogNumber = const Value.absent(),
     this.discNo = const Value.absent(),
@@ -3145,6 +3184,7 @@ class CompositionsCompanion extends UpdateCompanion<CompositionData> {
     Expression<String>? userId,
     Expression<String>? albumId,
     Expression<String>? workId,
+    Expression<String>? title,
     Expression<String>? composer,
     Expression<String>? catalogNumber,
     Expression<int>? discNo,
@@ -3160,6 +3200,7 @@ class CompositionsCompanion extends UpdateCompanion<CompositionData> {
       if (userId != null) 'user_id': userId,
       if (albumId != null) 'album_id': albumId,
       if (workId != null) 'work_id': workId,
+      if (title != null) 'title': title,
       if (composer != null) 'composer': composer,
       if (catalogNumber != null) 'catalog_number': catalogNumber,
       if (discNo != null) 'disc_no': discNo,
@@ -3177,6 +3218,7 @@ class CompositionsCompanion extends UpdateCompanion<CompositionData> {
     Value<String>? userId,
     Value<String>? albumId,
     Value<String?>? workId,
+    Value<String?>? title,
     Value<String>? composer,
     Value<String?>? catalogNumber,
     Value<int?>? discNo,
@@ -3192,6 +3234,7 @@ class CompositionsCompanion extends UpdateCompanion<CompositionData> {
       userId: userId ?? this.userId,
       albumId: albumId ?? this.albumId,
       workId: workId ?? this.workId,
+      title: title ?? this.title,
       composer: composer ?? this.composer,
       catalogNumber: catalogNumber ?? this.catalogNumber,
       discNo: discNo ?? this.discNo,
@@ -3218,6 +3261,9 @@ class CompositionsCompanion extends UpdateCompanion<CompositionData> {
     }
     if (workId.present) {
       map['work_id'] = Variable<String>(workId.value);
+    }
+    if (title.present) {
+      map['title'] = Variable<String>(title.value);
     }
     if (composer.present) {
       map['composer'] = Variable<String>(composer.value);
@@ -3256,6 +3302,7 @@ class CompositionsCompanion extends UpdateCompanion<CompositionData> {
           ..write('userId: $userId, ')
           ..write('albumId: $albumId, ')
           ..write('workId: $workId, ')
+          ..write('title: $title, ')
           ..write('composer: $composer, ')
           ..write('catalogNumber: $catalogNumber, ')
           ..write('discNo: $discNo, ')
@@ -7836,6 +7883,7 @@ typedef $$CompositionsTableCreateCompanionBuilder =
       required String userId,
       required String albumId,
       Value<String?> workId,
+      Value<String?> title,
       required String composer,
       Value<String?> catalogNumber,
       Value<int?> discNo,
@@ -7852,6 +7900,7 @@ typedef $$CompositionsTableUpdateCompanionBuilder =
       Value<String> userId,
       Value<String> albumId,
       Value<String?> workId,
+      Value<String?> title,
       Value<String> composer,
       Value<String?> catalogNumber,
       Value<int?> discNo,
@@ -7961,6 +8010,11 @@ class $$CompositionsTableFilterComposer
 
   ColumnFilters<String> get userId => $composableBuilder(
     column: $table.userId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get title => $composableBuilder(
+    column: $table.title,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -8121,6 +8175,11 @@ class $$CompositionsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get composer => $composableBuilder(
     column: $table.composer,
     builder: (column) => ColumnOrderings(column),
@@ -8222,6 +8281,9 @@ class $$CompositionsTableAnnotationComposer
 
   GeneratedColumn<String> get userId =>
       $composableBuilder(column: $table.userId, builder: (column) => column);
+
+  GeneratedColumn<String> get title =>
+      $composableBuilder(column: $table.title, builder: (column) => column);
 
   GeneratedColumn<String> get composer =>
       $composableBuilder(column: $table.composer, builder: (column) => column);
@@ -8386,6 +8448,7 @@ class $$CompositionsTableTableManager
                 Value<String> userId = const Value.absent(),
                 Value<String> albumId = const Value.absent(),
                 Value<String?> workId = const Value.absent(),
+                Value<String?> title = const Value.absent(),
                 Value<String> composer = const Value.absent(),
                 Value<String?> catalogNumber = const Value.absent(),
                 Value<int?> discNo = const Value.absent(),
@@ -8400,6 +8463,7 @@ class $$CompositionsTableTableManager
                 userId: userId,
                 albumId: albumId,
                 workId: workId,
+                title: title,
                 composer: composer,
                 catalogNumber: catalogNumber,
                 discNo: discNo,
@@ -8416,6 +8480,7 @@ class $$CompositionsTableTableManager
                 required String userId,
                 required String albumId,
                 Value<String?> workId = const Value.absent(),
+                Value<String?> title = const Value.absent(),
                 required String composer,
                 Value<String?> catalogNumber = const Value.absent(),
                 Value<int?> discNo = const Value.absent(),
@@ -8430,6 +8495,7 @@ class $$CompositionsTableTableManager
                 userId: userId,
                 albumId: albumId,
                 workId: workId,
+                title: title,
                 composer: composer,
                 catalogNumber: catalogNumber,
                 discNo: discNo,

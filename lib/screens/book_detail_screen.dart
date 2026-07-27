@@ -398,13 +398,19 @@ class _CompositionBlock extends StatelessWidget {
         : const <Performer>[];
 
     // TODO: Work 조인 표시 (대 2)
-    //   workId가 있으면 정규 작품명(Work.title)을 보여야 하나 지금은 조인 경로가
-    //   없다. 그때까지는 작곡가 + 작품번호만 표시한다.
-    final heading = [
+    //   workId가 매칭되면 Work 정규명을 주 표시로 올리되, 아래 title은 음반
+    //   고유 표기(발췌·편곡판 등)라 함께 보존해 부가로 남긴다. 지금은 조인
+    //   경로가 없어 사용자가 적은 title만 쓴다.
+    //
+    // 제목이 있으면 그것이 주 표시, 작곡가·작품번호는 부가정보 줄로 내린다.
+    // 제목이 없으면(구 데이터·미입력) 종전대로 작곡가 · 작품번호를 주 표시로.
+    final title = (composition.title ?? '').trim();
+    final meta = [
       composition.composer,
       if ((composition.catalogNumber ?? '').isNotEmpty)
         composition.catalogNumber!,
     ].join(' · ');
+    final heading = title.isNotEmpty ? title : meta;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 18),
@@ -432,6 +438,16 @@ class _CompositionBlock extends StatelessWidget {
                 ),
             ],
           ),
+
+          // 제목을 주 표시로 올린 경우에만 작곡가 · 작품번호를 아래에 덧붙인다.
+          if (title.isNotEmpty && meta.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text(
+                meta,
+                style: const TextStyle(color: AppColors.muted, fontSize: 12),
+              ),
+            ),
 
           // 곡별 연주자 예외만.
           if (overrides.isNotEmpty) ...[

@@ -583,6 +583,7 @@ class CollectionRepositoryImpl implements CollectionRepository {
         .map((c) => Composition(
               id: c.id,
               workId: c.workId,
+              title: c.title,
               composer: c.composer,
               catalogNumber: c.catalogNumber,
               discNo: c.discNo,
@@ -1194,6 +1195,7 @@ class CollectionRepositoryImpl implements CollectionRepository {
         userId: Value(userId),
         albumId: Value(albumId),
         workId: Value(c.workId),
+        title: Value(c.title),
         composer: Value(c.composer),
         catalogNumber: Value(c.catalogNumber),
         discNo: Value(c.discNo),

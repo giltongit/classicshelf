@@ -198,6 +198,7 @@ class _AddAlbumScreenState extends ConsumerState<AddAlbumScreen> {
 
       compositions.add(Composition(
         id: card.id,
+        title: _nullIfEmpty(card.title.text),
         composer: card.composer.text.trim(),
         catalogNumber: _nullIfEmpty(card.catalogNumber.text),
         discNo: int.tryParse(card.discNo.text.trim()),
@@ -586,6 +587,14 @@ class _AddAlbumScreenState extends ConsumerState<AddAlbumScreen> {
             onChanged: (_) => setState(() {}), // 빈 카드 판정 갱신
           ),
           const SizedBox(height: 10),
+          // 제목은 가장 길어 한 줄을 통째로 쓴다. workId 매칭(대 2)과 무관하게
+          // 사용자가 표지에서 읽은 그대로 남는 값이다.
+          _Field(
+            controller: card.title,
+            label: '작품 제목',
+            hint: '예: Goldberg Variations',
+          ),
+          const SizedBox(height: 10),
           _Field(
             controller: card.catalogNumber,
             label: '작품번호',
@@ -842,6 +851,7 @@ class _MovementRow {
 class _CompositionCard {
   final String id;
   final TextEditingController composer = TextEditingController();
+  final TextEditingController title = TextEditingController();
   final TextEditingController catalogNumber = TextEditingController();
   final TextEditingController discNo = TextEditingController();
   final TextEditingController trackFrom = TextEditingController();
@@ -862,6 +872,7 @@ class _CompositionCard {
   /// 악장도 같은 규칙 — 기존 id를 그대로 물고 와야 수정으로 처리된다.
   _CompositionCard.existing(Composition c) : id = c.id {
     composer.text = c.composer;
+    title.text = c.title ?? '';
     catalogNumber.text = c.catalogNumber ?? '';
     discNo.text = c.discNo?.toString() ?? '';
     trackFrom.text = c.trackFrom?.toString() ?? '';
@@ -876,6 +887,7 @@ class _CompositionCard {
   /// 아무것도 입력하지 않은 카드 — 저장 시 조용히 버린다.
   bool get isBlank =>
       composer.text.trim().isEmpty &&
+      title.text.trim().isEmpty &&
       catalogNumber.text.trim().isEmpty &&
       discNo.text.trim().isEmpty &&
       trackFrom.text.trim().isEmpty &&
@@ -884,6 +896,7 @@ class _CompositionCard {
 
   void dispose() {
     composer.dispose();
+    title.dispose();
     catalogNumber.dispose();
     discNo.dispose();
     trackFrom.dispose();

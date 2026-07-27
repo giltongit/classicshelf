@@ -109,6 +109,7 @@ class Compositions extends Table {                         // 수록곡
   TextColumn get albumId => text().references(Albums, #id)();
   TextColumn get workId =>
       text().nullable().references(Works, #id)();          // 미매칭 허용 (§3-4)
+  TextColumn get title => text().nullable()();             // 자유 텍스트 제목
   TextColumn get composer => text()();
   TextColumn get catalogNumber => text().nullable()();
   IntColumn get discNo => integer().nullable()();
@@ -208,12 +209,20 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
         onCreate: (m) async {
           await m.createAll();
+        },
+        // 로컬은 캐시라 drop & 재동기화도 가능하지만(§3-5), 미전송 편집이
+        // sync_queue에 남아 있을 수 있어 재생성하지 않고 컬럼만 더한다.
+        onUpgrade: (m, from, to) async {
+          // v2: compositions.title (Supabase 20260727080019_composition_title)
+          if (from < 2) {
+            await m.addColumn(compositions, compositions.title);
+          }
         },
       );
 }
