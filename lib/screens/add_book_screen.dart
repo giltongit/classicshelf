@@ -196,6 +196,19 @@ class _AddAlbumScreenState extends ConsumerState<AddAlbumScreen> {
         ));
       }
 
+      // 곡별 연주자 예외 — 이름이 빈 행은 제외.
+      // 유효한 행이 하나도 없으면 빈 리스트가 아니라 **null**을 넣는다:
+      // getAlbum·syncFromRemote가 "행 없음 → null(=상속)"로 조립하므로,
+      // 저장 쪽도 null로 맞춰야 왕복해도 형태가 흔들리지 않는다.
+      final overrides = card.overrides
+          .where((p) => p.name.text.trim().isNotEmpty)
+          .map((p) => Performer(
+                id: p.id, // 편집이면 기존 연주자 id 유지
+                role: p.role,
+                name: p.name.text.trim(),
+              ))
+          .toList();
+
       compositions.add(Composition(
         id: card.id,
         title: _nullIfEmpty(card.title.text),
@@ -209,7 +222,8 @@ class _AddAlbumScreenState extends ConsumerState<AddAlbumScreen> {
         // 자동입력(대 2)이 생기면 그 경로만 unverified로 들어온다.
         confidence: Confidence.confirmed,
         movements: movements,
-        performerOverrides: null, // 앨범 기본값 상속 (§3-2)
+        // null = 앨범 기본값 상속 (§3-2). 빈 리스트를 넣지 않는다.
+        performerOverrides: overrides.isEmpty ? null : overrides,
       ));
     }
 
@@ -405,8 +419,13 @@ class _AddAlbumScreenState extends ConsumerState<AddAlbumScreen> {
               style: TextStyle(color: AppColors.muted, fontSize: 12),
             ),
             const SizedBox(height: 12),
-            // TODO: 2B-2b — 곡별 연주자 override(상속 예외) 입력
-            ..._performers.map(_buildPerformerRow),
+            ..._performers.map((row) => _buildPerformerRow(
+                  row,
+                  onDelete: () => setState(() {
+                    _performers.remove(row);
+                    row.dispose();
+                  }),
+                )),
             const SizedBox(height: 4),
             _AddButton(
               label: '연주자 추가',
@@ -495,8 +514,12 @@ class _AddAlbumScreenState extends ConsumerState<AddAlbumScreen> {
     );
   }
 
-  // ── Step 2 행 ──
-  Widget _buildPerformerRow(_PerformerRow row) {
+  // ── 연주자 행 — 앨범 기본(Step 2)과 곡별 override가 공유한다.
+  //   구조가 같아야 사용자가 "같은 것을 다른 층위에 적는다"고 읽는다.
+  Widget _buildPerformerRow(
+    _PerformerRow row, {
+    required VoidCallback onDelete,
+  }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Row(
@@ -531,10 +554,7 @@ class _AddAlbumScreenState extends ConsumerState<AddAlbumScreen> {
           IconButton(
             icon: const Icon(Icons.close, size: 18, color: AppColors.muted),
             tooltip: '삭제',
-            onPressed: () => setState(() {
-              _performers.remove(row);
-              row.dispose();
-            }),
+            onPressed: onDelete,
           ),
         ],
       ),
@@ -633,6 +653,122 @@ class _AddAlbumScreenState extends ConsumerState<AddAlbumScreen> {
           ),
           const SizedBox(height: 12),
           _buildMovementsSection(card),
+          const SizedBox(height: 8),
+          _buildOverridesSection(card),
+        ],
+      ),
+    );
+  }
+
+  // ── Step 3 카드 안 · 곡별 연주자 override 섹션 ──
+  //   비어 있으면 곧 "상속"이다(§3-2). 열었다가 비우고 닫아도 상속으로 돌아간다.
+  Widget _buildOverridesSection(_CompositionCard card) {
+    final n = card.overrides.length;
+
+    if (!card.overridesExpanded) {
+      return Align(
+        alignment: Alignment.centerLeft,
+        child: TextButton.icon(
+          onPressed: () => setState(() {
+            card.overridesExpanded = true;
+            if (card.overrides.isEmpty) card.overrides.add(_PerformerRow());
+          }),
+          icon: Icon(n == 0 ? Icons.person_add_alt : Icons.expand_more,
+              size: 16),
+          label: Text(
+            n == 0 ? '이 곡 연주자 지정' : '이 곡 연주자 $n명',
+            style: const TextStyle(fontSize: 13),
+          ),
+          style: TextButton.styleFrom(
+            foregroundColor: AppColors.gold,
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            visualDensity: VisualDensity.compact,
+          ),
+        ),
+      );
+    }
+
+    // 앨범 기본값 요약 — 무엇을 덮어쓰는 중인지 보이게 한다.
+    final defaults = _performers
+        .where((p) => p.name.text.trim().isNotEmpty)
+        .map((p) => '${_roleLabel(p.role)} ${p.name.text.trim()}')
+        .join(' · ');
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(10, 6, 6, 8),
+      decoration: BoxDecoration(
+        color: AppColors.surface2,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.dim),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          InkWell(
+            onTap: () => setState(() => card.overridesExpanded = false),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(
+                children: [
+                  const Text(
+                    '이 곡만의 연주자',
+                    style: TextStyle(
+                      color: AppColors.gold,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  const Icon(Icons.expand_less,
+                      size: 16, color: AppColors.muted),
+                  const Spacer(),
+                  const Text(
+                    '선택 입력',
+                    style: TextStyle(color: AppColors.muted, fontSize: 11),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          // 상속 규칙 안내 — 역할 단위 병합이라는 점을 사용자가 알아야
+          // "관현악은 왜 안 적었는데 남아 있지?"에서 놀라지 않는다.
+          const Padding(
+            padding: EdgeInsets.only(bottom: 6),
+            child: Text(
+              '지정한 역할만 앨범 기본값을 덮어씁니다. 비워 두면 전부 상속합니다.',
+              style: TextStyle(
+                  color: AppColors.muted, fontSize: 11, height: 1.4),
+            ),
+          ),
+          if (defaults.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(
+                '앨범 기본: $defaults',
+                style: const TextStyle(
+                    color: AppColors.dim, fontSize: 11, height: 1.4),
+              ),
+            ),
+          ...card.overrides.map((row) => _buildPerformerRow(
+                row,
+                onDelete: () => setState(() {
+                  card.overrides.remove(row);
+                  row.dispose();
+                  // 마지막 행을 지우면 접어서 "상속" 상태로 되돌린다.
+                  if (card.overrides.isEmpty) card.overridesExpanded = false;
+                }),
+              )),
+          TextButton.icon(
+            onPressed: () =>
+                setState(() => card.overrides.add(_PerformerRow())),
+            icon: const Icon(Icons.add, size: 16),
+            label: const Text('연주자 추가', style: TextStyle(fontSize: 13)),
+            style: TextButton.styleFrom(
+              foregroundColor: AppColors.gold,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              visualDensity: VisualDensity.compact,
+            ),
+          ),
         ],
       ),
     );
@@ -860,8 +996,13 @@ class _CompositionCard {
   /// 악장 — 선택 입력. 단악장 곡(서곡·교향시·소품)이 많아 강제하지 않는다.
   final List<_MovementRow> movements = [];
 
-  /// 악장 섹션 펼침 여부(카드별). 기본 접힘 — 카드가 길어지는 걸 막는다.
+  /// 곡별 연주자 예외(§3-2). 비어 있으면 앨범 기본값을 그대로 상속한다.
+  /// 상속은 role 단위 병합이라, 여기 담은 역할만 덮이고 나머지는 상속된다.
+  final List<_PerformerRow> overrides = [];
+
+  /// 섹션 펼침 여부(카드별). 기본 접힘 — 카드가 길어지는 걸 막는다.
   bool movementsExpanded = false;
+  bool overridesExpanded = false;
 
   /// 새로 추가한 카드 — 여기서 id가 확정된다.
   _CompositionCard() : id = _uuid.v4();
@@ -882,6 +1023,10 @@ class _CompositionCard {
       ([...c.movements]..sort((a, b) => a.seq.compareTo(b.seq)))
           .map(_MovementRow.existing),
     );
+    // null(=상속)이면 비워 둔다 — 빈 섹션이 곧 상속을 뜻한다.
+    overrides.addAll(
+      (c.performerOverrides ?? const <Performer>[]).map(_PerformerRow.existing),
+    );
   }
 
   /// 아무것도 입력하지 않은 카드 — 저장 시 조용히 버린다.
@@ -892,7 +1037,8 @@ class _CompositionCard {
       discNo.text.trim().isEmpty &&
       trackFrom.text.trim().isEmpty &&
       trackTo.text.trim().isEmpty &&
-      movements.isEmpty;
+      movements.isEmpty &&
+      overrides.isEmpty;
 
   void dispose() {
     composer.dispose();
@@ -903,6 +1049,9 @@ class _CompositionCard {
     trackTo.dispose();
     for (final m in movements) {
       m.dispose();
+    }
+    for (final p in overrides) {
+      p.dispose();
     }
   }
 }
