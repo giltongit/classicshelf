@@ -2,7 +2,8 @@
 // add_book_screen.dart — 음반 등록 폼 (2B-2a 뼈대)
 //   파일명은 라우팅 참조를 줄이려고 유지, 클래스는 AddAlbumScreen.
 //
-// 범위: Step 1·2·4 + 최소 Step 3(수록곡 카드 N개) + 저장 + 편집 모드(2B-2b-①).
+// 범위: Step 1·2·4 + Step 3(수록곡 카드 N개 + 악장) + 저장 + 편집 모드.
+//   2B-2a 뼈대 → 2B-2b-① 편집 모드 → 2B-2b-② 악장 입력.
 //
 // 설계 전제(확정):
 //   · AlbumDraft 계층을 두지 않는다 — 화면 상태에서 바로 Album 애그리게이트를
@@ -180,6 +181,21 @@ class _AddAlbumScreenState extends ConsumerState<AddAlbumScreen> {
         if (!card.isBlank) droppedPartial++;
         continue;
       }
+      // 악장 조립 — 제목 없는 행은 조용히 제외(선택 입력이라 오류로 막지 않는다).
+      // 편집 시 손대지 않은 악장도 pre-fill된 행 그대로 다시 실려 유실되지 않는다.
+      final movements = <Movement>[];
+      for (final mr in card.movements) {
+        final mt = mr.title.text.trim();
+        if (mt.isEmpty) continue;
+        movements.add(Movement(
+          id: mr.id, // 편집이면 기존 악장 id 유지
+          seq: movements.length, // 행 순서 = seq (0, 1, 2…)
+          title: mt,
+          trackNo: int.tryParse(mr.trackNo.text.trim()),
+          durationSec: _parseDurationSec(mr.duration.text),
+        ));
+      }
+
       compositions.add(Composition(
         id: card.id,
         composer: card.composer.text.trim(),
@@ -191,7 +207,7 @@ class _AddAlbumScreenState extends ConsumerState<AddAlbumScreen> {
         // 사용자가 직접 입력한 값이므로 confirmed.
         // 자동입력(대 2)이 생기면 그 경로만 unverified로 들어온다.
         confidence: Confidence.confirmed,
-        movements: const [], // TODO: 2B-2b — 악장 입력
+        movements: movements,
         performerOverrides: null, // 앨범 기본값 상속 (§3-2)
       ));
     }
@@ -410,9 +426,10 @@ class _AddAlbumScreenState extends ConsumerState<AddAlbumScreen> {
               style: TextStyle(color: AppColors.muted, fontSize: 12),
             ),
             const SizedBox(height: 12),
-            // TODO: 2B-2b — 6곡 이상이면 표 전환 (§4-3)
-            // TODO: 2B-2b — 세트(전집) 일괄 추가
-            // TODO: 2B-2b — Work 매칭·자동완성은 대 2
+            // TODO: 2B-2b-③ — 6곡 이상이면 표 전환 (§4-3)
+            // TODO: 2B-2b-③ — 세트(전집) 일괄 추가
+            // TODO: 2B-2b-③ — 곡별 연주자 override(상속 예외)
+            // TODO: Work 매칭·자동완성은 대 2
             ...List.generate(
               _compositions.length,
               (i) => _buildCompositionCard(i),
@@ -605,7 +622,157 @@ class _AddAlbumScreenState extends ConsumerState<AddAlbumScreen> {
               ),
             ],
           ),
-          // TODO: 2B-2b — 악장(Movement) 목록 입력
+          const SizedBox(height: 12),
+          _buildMovementsSection(card),
+        ],
+      ),
+    );
+  }
+
+  // ── Step 3 카드 안 · 악장 섹션 ──
+  //   기본 접힘. 다악장 곡이 아닌 경우가 많아, 펼쳐두면 카드만 길어진다.
+  Widget _buildMovementsSection(_CompositionCard card) {
+    final n = card.movements.length;
+
+    // 접힘 — 악장이 없으면 추가 버튼만, 있으면 개수 요약.
+    if (!card.movementsExpanded) {
+      return Align(
+        alignment: Alignment.centerLeft,
+        child: TextButton.icon(
+          onPressed: () => setState(() {
+            card.movementsExpanded = true;
+            if (card.movements.isEmpty) card.movements.add(_MovementRow());
+          }),
+          icon: Icon(n == 0 ? Icons.add : Icons.expand_more, size: 16),
+          label: Text(
+            n == 0 ? '악장 추가' : '악장 $n개',
+            style: const TextStyle(fontSize: 13),
+          ),
+          style: TextButton.styleFrom(
+            foregroundColor: AppColors.gold,
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            visualDensity: VisualDensity.compact,
+          ),
+        ),
+      );
+    }
+
+    // 펼침 — 헤더(접기) + 악장 행들 + 추가 버튼.
+    return Container(
+      padding: const EdgeInsets.fromLTRB(10, 6, 6, 8),
+      decoration: BoxDecoration(
+        color: AppColors.surface2,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.dim),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          InkWell(
+            onTap: () => setState(() => card.movementsExpanded = false),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(
+                children: [
+                  Text(
+                    n == 0 ? '악장' : '악장 $n개',
+                    style: const TextStyle(
+                      color: AppColors.gold,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  const Icon(Icons.expand_less,
+                      size: 16, color: AppColors.muted),
+                  const Spacer(),
+                  const Text(
+                    '선택 입력',
+                    style: TextStyle(color: AppColors.muted, fontSize: 11),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          ...List.generate(
+            card.movements.length,
+            (i) => _buildMovementRow(card, i),
+          ),
+          TextButton.icon(
+            onPressed: () =>
+                setState(() => card.movements.add(_MovementRow())),
+            icon: const Icon(Icons.add, size: 16),
+            label: const Text('악장 추가', style: TextStyle(fontSize: 13)),
+            style: TextButton.styleFrom(
+              foregroundColor: AppColors.gold,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              visualDensity: VisualDensity.compact,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMovementRow(_CompositionCard card, int index) {
+    final row = card.movements[index];
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              SizedBox(
+                width: 20,
+                child: Text(
+                  '${index + 1}',
+                  style: const TextStyle(color: AppColors.muted, fontSize: 12),
+                ),
+              ),
+              Expanded(
+                child: _Field(
+                  controller: row.title,
+                  hint: '악장 제목 (예: II. Andante)',
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.close, size: 16, color: AppColors.muted),
+                tooltip: '이 악장 삭제',
+                visualDensity: VisualDensity.compact,
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                padding: EdgeInsets.zero,
+                onPressed: () => setState(() {
+                  card.movements.removeAt(index);
+                  row.dispose();
+                  // 마지막 악장을 지우면 섹션을 접어 카드를 정리한다.
+                  if (card.movements.isEmpty) card.movementsExpanded = false;
+                }),
+              ),
+            ],
+          ),
+          Padding(
+            padding: const EdgeInsets.only(left: 20, right: 32, top: 6),
+            child: Row(
+              children: [
+                Expanded(
+                  child: _Field(
+                    controller: row.trackNo,
+                    label: '트랙',
+                    numeric: true,
+                    maxLength: 3,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _Field(
+                    controller: row.duration,
+                    label: '길이',
+                    hint: '4:32',
+                  ),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -647,6 +814,31 @@ class _PerformerRow {
   void dispose() => name.dispose();
 }
 
+class _MovementRow {
+  final String id;
+  final TextEditingController title = TextEditingController();
+  final TextEditingController trackNo = TextEditingController();
+
+  /// mm:ss 로 입력받아 저장 시 초로 바꾼다(모델은 durationSec).
+  final TextEditingController duration = TextEditingController();
+
+  /// 새로 추가한 악장 — 여기서 id가 확정된다.
+  _MovementRow() : id = _uuid.v4();
+
+  /// 편집 pre-fill — 기존 악장의 id를 물고 온다.
+  _MovementRow.existing(Movement m) : id = m.id {
+    title.text = m.title;
+    trackNo.text = m.trackNo?.toString() ?? '';
+    duration.text = _durationToText(m.durationSec);
+  }
+
+  void dispose() {
+    title.dispose();
+    trackNo.dispose();
+    duration.dispose();
+  }
+}
+
 class _CompositionCard {
   final String id;
   final TextEditingController composer = TextEditingController();
@@ -655,18 +847,30 @@ class _CompositionCard {
   final TextEditingController trackFrom = TextEditingController();
   final TextEditingController trackTo = TextEditingController();
 
+  /// 악장 — 선택 입력. 단악장 곡(서곡·교향시·소품)이 많아 강제하지 않는다.
+  final List<_MovementRow> movements = [];
+
+  /// 악장 섹션 펼침 여부(카드별). 기본 접힘 — 카드가 길어지는 걸 막는다.
+  bool movementsExpanded = false;
+
   /// 새로 추가한 카드 — 여기서 id가 확정된다.
   _CompositionCard() : id = _uuid.v4();
 
   /// 편집 pre-fill — 기존 수록곡의 id를 물고 온다.
   /// 이 id가 유지되어야 저장 시 같은 행을 수정하고, 카드를 지우면
   /// 하위(악장·곡별 연주자)까지 고아 없이 함께 삭제된다.
+  /// 악장도 같은 규칙 — 기존 id를 그대로 물고 와야 수정으로 처리된다.
   _CompositionCard.existing(Composition c) : id = c.id {
     composer.text = c.composer;
     catalogNumber.text = c.catalogNumber ?? '';
     discNo.text = c.discNo?.toString() ?? '';
     trackFrom.text = c.trackFrom?.toString() ?? '';
     trackTo.text = c.trackTo?.toString() ?? '';
+    // 폼에서 악장을 건드리지 않아도 저장 시 그대로 다시 실린다(유실 방지).
+    movements.addAll(
+      ([...c.movements]..sort((a, b) => a.seq.compareTo(b.seq)))
+          .map(_MovementRow.existing),
+    );
   }
 
   /// 아무것도 입력하지 않은 카드 — 저장 시 조용히 버린다.
@@ -675,7 +879,8 @@ class _CompositionCard {
       catalogNumber.text.trim().isEmpty &&
       discNo.text.trim().isEmpty &&
       trackFrom.text.trim().isEmpty &&
-      trackTo.text.trim().isEmpty;
+      trackTo.text.trim().isEmpty &&
+      movements.isEmpty;
 
   void dispose() {
     composer.dispose();
@@ -683,7 +888,34 @@ class _CompositionCard {
     discNo.dispose();
     trackFrom.dispose();
     trackTo.dispose();
+    for (final m in movements) {
+      m.dispose();
+    }
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 재생시간 변환 — 모델은 초(durationSec), 입력은 mm:ss.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// "m:ss" → 초. 콜론이 없으면 초 단위 숫자로 본다. 형식이 어긋나면 null(= 미입력).
+/// 저장을 막지 않는다 — 선택 입력이라 잘못 적었다고 흐름을 세우지 않는다.
+int? _parseDurationSec(String s) {
+  final t = s.trim();
+  if (t.isEmpty) return null;
+  if (!t.contains(':')) return int.tryParse(t);
+  final parts = t.split(':');
+  if (parts.length != 2) return null;
+  final m = int.tryParse(parts[0].trim());
+  final sec = int.tryParse(parts[1].trim());
+  if (m == null || sec == null) return null;
+  return m * 60 + sec;
+}
+
+/// 초 → "m:ss" (편집 pre-fill 표시용). 상세 화면 표기와 같은 형식.
+String _durationToText(int? sec) {
+  if (sec == null) return '';
+  return '${sec ~/ 60}:${(sec % 60).toString().padLeft(2, '0')}';
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
