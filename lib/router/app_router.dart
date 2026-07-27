@@ -42,12 +42,12 @@ final appRouter = GoRouter(
     ),
 
     // ── 탭 외부 라우트 (하단 탭 없음) ────────────────────────────────────────
-    // TODO: 클래식 등록 폼 (2B-2)
-    //   AddBookScreen이 스텁이라 extra(수정 대상·검색 결과)를 받지 않는다.
-    //   폼 재구현 시 앨범 id 또는 프리필 데이터를 넘기는 분기를 되살릴 것.
+    // TODO: 2B-2b — 편집 모드
+    //   지금은 신규 등록 전용이라 extra(수정 대상 앨범·검색 결과 프리필)를 받지 않는다.
+    //   편집을 붙일 때 앨범 id를 넘기는 분기를 되살릴 것.
     GoRoute(
       path: '/add',
-      builder: (context, state) => const AddBookScreen(),
+      builder: (context, state) => const AddAlbumScreen(),
     ),
     // 앨범 id는 클라이언트 생성 UUID(String)다. book 시절의 int localId 파싱을
     // 그대로 두면 UUID에서 예외가 나므로 경로도 /albums/:id 로 옮겼다.

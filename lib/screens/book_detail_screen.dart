@@ -17,7 +17,6 @@ import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../models/album.dart';
 import '../providers/providers.dart';
@@ -127,13 +126,16 @@ class _AlbumDetailBody extends ConsumerWidget {
               ),
             ),
             actions: [
-              // TODO: 편집 (2B-2)
-              //   AddBookScreen이 스텁이라 지금은 안내 화면만 열린다.
-              //   등록 폼 구현 시 앨범 id를 넘겨 수정 모드로 진입시킬 것.
+              // TODO: 2B-2b — 편집 모드
+              //   /add는 이제 실제 등록 폼이지만 신규 전용(프리필 없음)이라,
+              //   여기서 그대로 열면 빈 폼이 뜨고 저장 시 중복 앨범이 생긴다.
+              //   앨범 id를 넘겨 수정 모드로 진입시킬 때까지 안내만 띄운다.
               _RoundAction(
                 icon: Icons.edit_outlined,
                 tooltip: '수정',
-                onPressed: () => context.push('/add'),
+                onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('수정 준비 중 (2B-2b)')),
+                ),
               ),
               _RoundAction(
                 icon: Icons.delete_outline,
