@@ -11,9 +11,10 @@
 // composer·conductor는 **정확 일치** 매칭이라(§6-3 쿼리) 자유 텍스트로 받지
 //   않는다. 등록된 값에서 뽑은 목록(filterFacetsProvider)에서 고르게 한다.
 //
-// period(시대) 축은 이번 시트에 없다: 쿼리가 works.period를 조인하는데 Works
-//   시드(대 1-A)가 미착수라 테이블이 비어 어떤 값이든 0건이 된다. 모델 필드와
-//   리포지토리 쿼리는 그대로 두었으므로 시드 후 칩만 붙이면 된다(§17).
+// period(시대) 축은 Works 시드 + 로컬 동기화 + Work 매칭이 이어진 뒤에야 의미가
+//   생긴다(§17-22의 3단 구조). 셋 다 갖춰져 이제 실동작한다. 다만 선택지는
+//   works 전체가 아니라 **사용자가 매칭한 곡의 시대**만 뽑는다 — 전체에서
+//   뽑으면 대부분 0건인 칩이 생겨 composer/conductor facet의 원칙과 어긋난다.
 // =============================================================================
 
 import 'package:flutter/material.dart';
@@ -139,6 +140,28 @@ class _AlbumFilterSheetState extends ConsumerState<_AlbumFilterSheet> {
                 }).toList(),
               ),
               const SizedBox(height: 20),
+
+              // ── 시대 ──────────────────────────────────────────────────
+              // 매칭된 수록곡이 없으면 facet이 비고, 그러면 이 섹션을 통째로
+              // 감춘다 — 고를 수는 있는데 결과가 없는 축을 노출하지 않는다.
+              if (facets.value?.periods.isNotEmpty ?? false) ...[
+                const _SectionLabel('시대'),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: facets.value!.periods.map((p) {
+                    final selected = _draft.period == p;
+                    return _choice(
+                      label: p,
+                      selected: selected,
+                      onTap: () => setState(() => _draft = selected
+                          ? _draft.copyWith(clearPeriod: true)
+                          : _draft.copyWith(period: p)),
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 20),
+              ],
 
               // ── 작곡가 · 지휘자 ────────────────────────────────────────
               _FacetDropdown(

@@ -14,6 +14,7 @@ import '../models/album.dart';
 import '../models/album_filter.dart';
 import '../models/album_summary.dart';
 import '../models/wishlist_entry.dart';
+import '../models/work.dart';
 
 /// flush 결과 통계. book의 FlushSyncResult에서 promote(inserted 매핑)를 제거.
 /// 클라이언트 UUID라 "새로 얻은 서버 id" 개념이 없으므로 insert 목록이 불필요.
@@ -40,7 +41,14 @@ typedef WorksSyncResult = ({int works, int aliases});
 /// composer·conductor 필터는 **정확 일치**(§6-3 쿼리)라 자유 텍스트로 받으면
 /// 한 글자만 달라도 0건이 된다. 있는 값 중에서 고르게 하려고 별도로 뽑는다.
 /// (Works 시드가 들어오면 자동완성으로 대체 가능 — 그때까지의 대안)
-typedef FilterFacets = ({List<String> composers, List<String> conductors});
+/// periods는 **사용자가 매칭한 수록곡이 참조하는 work의 시대**만 담는다.
+/// works 전체(2만여 건)에서 뽑으면 대부분 0건인 칩이 생겨, composer/conductor와
+/// 달리 "고를 수 있는데 결과가 없는" 선택지가 된다. 있는 것만 보여준다.
+typedef FilterFacets = ({
+  List<String> composers,
+  List<String> conductors,
+  List<String> periods,
+});
 
 /// 저장된 애그리게이트 반환값. book처럼 서버 id를 되돌려줄 필요가 없어
 /// 도메인 Album을 그대로 반환한다(로컬=원격 동일 id).
@@ -61,6 +69,14 @@ abstract interface class CollectionRepository {
   // ── 참조 데이터(Works) ────────────────────────────────────────────────────
   /// 로컬 works 행 수. 0이면 아직 참조 데이터를 안 받았다는 뜻(앱 시작 자동 동기화 판단).
   Future<int> localWorksCount();
+
+  /// 등록 폼 작곡가 자동완성 — 로컬 works의 composer 부분일치(distinct).
+  Future<List<String>> suggestComposers(String query, {int limit = 20});
+
+  /// 등록 폼 작품 자동완성 — 해당 작곡가의 works 중 제목 부분일치.
+  /// popular·recommended를 먼저 올린다(§3-7 자동완성 순위).
+  Future<List<Work>> suggestWorks(String composer, String query,
+      {int limit = 30});
 
   /// 원격 works/work_aliases → 로컬 Drift 벌크 미러링.
   /// 참조 데이터는 사용자 소유가 아니라 공용 읽기 전용이므로 sync_queue와 무관하다

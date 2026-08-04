@@ -27,6 +27,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import '../models/album.dart';
+import '../models/work.dart';
 import '../providers/providers.dart';
 import '../theme/app_theme.dart';
 
@@ -213,6 +214,8 @@ class _AddAlbumScreenState extends ConsumerState<AddAlbumScreen> {
         id: card.id,
         title: _nullIfEmpty(card.title.text),
         composer: card.composer.text.trim(),
+        // 자동완성에서 고른 정규 작품. 안 골랐으면 null(미매칭 허용, §3-4).
+        workId: card.workId,
         catalogNumber: _nullIfEmpty(card.catalogNumber.text),
         discNo: int.tryParse(card.discNo.text.trim()),
         trackFrom: int.tryParse(card.trackFrom.text.trim()),
@@ -600,20 +603,81 @@ class _AddAlbumScreenState extends ConsumerState<AddAlbumScreen> {
             ],
           ),
           const SizedBox(height: 4),
-          _Field(
+          _AutocompleteField<String>(
             controller: card.composer,
+            focusNode: card.composerFocus,
             label: '작곡가 *',
             hint: '예: J.S. Bach',
-            onChanged: (_) => setState(() {}), // 빈 카드 판정 갱신
+            search: (q) =>
+                ref.read(collectionRepositoryProvider).suggestComposers(q),
+            displayString: (s) => s,
+            optionBuilder: (s) => Text(s,
+                style: const TextStyle(
+                    color: AppColors.cream, fontSize: 14)),
+            onSelected: (_) => setState(() {
+              // 작곡가가 바뀌면 이전 매칭은 더는 유효하지 않다.
+              card.workId = null;
+              card.matchedTitle = null;
+            }),
+            onChanged: (_) => setState(() {
+              card.workId = null;
+              card.matchedTitle = null;
+            }),
           ),
           const SizedBox(height: 10),
-          // 제목은 가장 길어 한 줄을 통째로 쓴다. workId 매칭(대 2)과 무관하게
-          // 사용자가 표지에서 읽은 그대로 남는 값이다.
-          _Field(
+          // 제목은 가장 길어 한 줄을 통째로 쓴다. 자동완성에서 고르면 정규 작품과
+          // 이어지고(workId), 자유 입력이면 표지에서 읽은 그대로만 남는다.
+          _AutocompleteField<Work>(
             controller: card.title,
+            focusNode: card.titleFocus,
             label: '작품 제목',
             hint: '예: Goldberg Variations',
+            search: (q) => ref
+                .read(collectionRepositoryProvider)
+                .suggestWorks(card.composer.text, q),
+            displayString: (w) => w.title,
+            optionBuilder: (w) => Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(w.title,
+                    style: const TextStyle(
+                        color: AppColors.cream, fontSize: 14)),
+                if (w.genre != null || w.period != null)
+                  Text(
+                    [w.genre, w.period].whereType<String>().join(' · '),
+                    style: const TextStyle(
+                        color: AppColors.muted, fontSize: 11),
+                  ),
+              ],
+            ),
+            onSelected: (w) => setState(() {
+              card.workId = w.id;
+              card.matchedTitle = w.title;
+            }),
+            onChanged: (v) => setState(() {
+              // 고른 뒤 제목을 손으로 고치면 참조와 표기가 어긋난다 — 매칭 해제.
+              if (card.matchedTitle != null && v != card.matchedTitle) {
+                card.workId = null;
+                card.matchedTitle = null;
+              }
+            }),
           ),
+          if (card.workId != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Row(
+                children: [
+                  const Icon(Icons.link, size: 14, color: AppColors.gold),
+                  const SizedBox(width: 4),
+                  Text(
+                    '작품 데이터와 연결됨',
+                    style: TextStyle(
+                        color: AppColors.gold.withValues(alpha: 0.9),
+                        fontSize: 11),
+                  ),
+                ],
+              ),
+            ),
           const SizedBox(height: 10),
           _Field(
             controller: card.catalogNumber,
@@ -1004,6 +1068,18 @@ class _CompositionCard {
   bool movementsExpanded = false;
   bool overridesExpanded = false;
 
+  /// 정규 작품 참조(§3-4). 자동완성에서 작품을 고르면 채워지고, 자유 입력이면
+  /// null로 남는다 — 매칭은 어디까지나 선택이라 기존 자유 텍스트 흐름을 막지 않는다.
+  String? workId;
+
+  /// workId를 채울 때 고른 작품의 제목. 이후 제목을 손으로 고치면 매칭이 더는
+  /// 유효하지 않으므로 workId를 떨군다(제목과 참조가 어긋나는 걸 막는다).
+  String? matchedTitle;
+
+  /// 자동완성(RawAutocomplete)이 요구하는 포커스 노드. 카드마다 하나씩.
+  final composerFocus = FocusNode();
+  final titleFocus = FocusNode();
+
   /// 새로 추가한 카드 — 여기서 id가 확정된다.
   _CompositionCard() : id = _uuid.v4();
 
@@ -1014,6 +1090,10 @@ class _CompositionCard {
   _CompositionCard.existing(Composition c) : id = c.id {
     composer.text = c.composer;
     title.text = c.title ?? '';
+    // 정규 작품 참조를 물고 온다. 폼에 입력란이 따로 없는 값이라 여기서 안 실으면
+    // 편집 저장 때 통째 덮어쓰기(§3-2)로 매칭이 조용히 날아간다.
+    workId = c.workId;
+    matchedTitle = c.workId == null ? null : c.title;
     catalogNumber.text = c.catalogNumber ?? '';
     discNo.text = c.discNo?.toString() ?? '';
     trackFrom.text = c.trackFrom?.toString() ?? '';
@@ -1041,6 +1121,8 @@ class _CompositionCard {
       overrides.isEmpty;
 
   void dispose() {
+    composerFocus.dispose();
+    titleFocus.dispose();
     composer.dispose();
     title.dispose();
     catalogNumber.dispose();
@@ -1084,8 +1166,104 @@ String _durationToText(int? sec) {
 // 공용 위젯
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 자동완성 필드 (§3-4 Work 매칭)
+//   로컬 works(참조 데이터)에서 제안한다. 참조 데이터를 아직 안 받았거나
+//   조회가 실패하면 제안이 비어 그냥 평범한 TextField처럼 동작한다 —
+//   자동완성은 거들 뿐이고, 자유 텍스트 입력 흐름을 절대 막지 않는다.
+//
+//   Autocomplete가 아니라 RawAutocomplete를 쓴 이유: 카드가 이미 들고 있는
+//   TextEditingController를 그대로 넘겨야 한다(빈 카드 판정·저장 조립이 그
+//   컨트롤러를 본다). Autocomplete는 내부에서 컨트롤러를 새로 만들어 이중
+//   관리가 된다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _AutocompleteField<T extends Object> extends StatelessWidget {
+  final TextEditingController controller;
+  final FocusNode focusNode;
+  final String label;
+  final String? hint;
+
+  /// 입력값으로 후보를 조회한다. 실패하면 빈 목록(자동완성만 조용히 꺼진다).
+  final Future<List<T>> Function(String query) search;
+
+  /// 후보 → 입력란에 넣을 문자열.
+  final String Function(T option) displayString;
+
+  /// 후보 한 줄의 표시 위젯(부제 등을 붙일 수 있게 분리).
+  final Widget Function(T option) optionBuilder;
+
+  final void Function(T option) onSelected;
+  final ValueChanged<String>? onChanged;
+
+  const _AutocompleteField({
+    required this.controller,
+    required this.focusNode,
+    required this.label,
+    this.hint,
+    required this.search,
+    required this.displayString,
+    required this.optionBuilder,
+    required this.onSelected,
+    this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return RawAutocomplete<T>(
+      textEditingController: controller,
+      focusNode: focusNode,
+      displayStringForOption: displayString,
+      optionsBuilder: (value) async {
+        try {
+          return await search(value.text);
+        } catch (_) {
+          return const Iterable.empty();
+        }
+      },
+      onSelected: onSelected,
+      fieldViewBuilder: (context, ctrl, node, onSubmit) => _Field(
+        controller: ctrl,
+        focusNode: node,
+        label: label,
+        hint: hint,
+        onChanged: onChanged,
+      ),
+      optionsViewBuilder: (context, select, options) => Align(
+        alignment: Alignment.topLeft,
+        child: Material(
+          color: AppColors.surface2,
+          elevation: 4,
+          borderRadius: BorderRadius.circular(8),
+          child: ConstrainedBox(
+            // 후보가 많아도 화면을 잡아먹지 않게 자른다.
+            constraints: const BoxConstraints(maxHeight: 260),
+            child: ListView.builder(
+              padding: EdgeInsets.zero,
+              shrinkWrap: true,
+              itemCount: options.length,
+              itemBuilder: (context, i) {
+                final o = options.elementAt(i);
+                return InkWell(
+                  onTap: () => select(o),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 10),
+                    child: optionBuilder(o),
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _Field extends StatelessWidget {
   final TextEditingController controller;
+  final FocusNode? focusNode;
   final String? label;
   final String? hint;
   final bool numeric;
@@ -1096,6 +1274,7 @@ class _Field extends StatelessWidget {
 
   const _Field({
     required this.controller,
+    this.focusNode,
     this.label,
     this.hint,
     this.numeric = false,
@@ -1109,6 +1288,7 @@ class _Field extends StatelessWidget {
   Widget build(BuildContext context) {
     return TextField(
       controller: controller,
+      focusNode: focusNode,
       maxLines: maxLines,
       maxLength: maxLength,
       textInputAction: textInputAction,

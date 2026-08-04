@@ -10,6 +10,7 @@
 //       필터 쿼리도 두 테이블을 ∪로 보므로 선택지와 검색 범위가 어긋나면 안 된다.
 // =============================================================================
 
+import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -31,6 +32,26 @@ void main() {
       supabase: SupabaseClient('http://localhost:54321', 'test-anon-key'),
       db: db,
     );
+
+    // 참조 데이터(Works). 로컬 벌크 동기화 결과를 흉내낸다 — period 축은
+    // compositions.work_id → works.period 조인이라 이게 있어야 성립한다.
+    await db.batch((b) {
+      b.insertAll(db.works, [
+        WorksCompanion.insert(
+          id: 'w-beethoven',
+          composer: 'Beethoven',
+          title: 'Symphony No.5',
+          period: const Value('Romantic'),
+        ),
+        // 어느 수록곡도 참조하지 않는 작품 — facet에 나오면 안 된다.
+        WorksCompanion.insert(
+          id: 'w-unused',
+          composer: 'Palestrina',
+          title: 'Missa Papae Marcelli',
+          period: const Value('Renaissance'),
+        ),
+      ]);
+    });
 
     /// 로컬 트랜잭션만 검증한다. 이후 원격 단계는 테스트 환경에 connectivity
     /// 플러그인이 없어 예외로 끝나므로 삼킨다(로컬은 이미 커밋됨).
@@ -56,6 +77,7 @@ void main() {
           composer: 'Beethoven',
           seq: 0,
           confidence: Confidence.confirmed,
+          workId: 'w-beethoven', // 등록 폼 자동완성에서 매칭한 상태
         ),
       ],
     ));
@@ -90,6 +112,28 @@ void main() {
     expect(f.composers, ['Beethoven', 'Mozart']);
     // 앨범 기본값(Karajan)과 곡별 override(Böhm)가 모두 잡혀야 한다.
     expect(f.conductors, ['Karajan', 'Böhm']..sort());
+  });
+
+  test('facet: 시대는 매칭된 곡의 것만 (참조만 되고 안 쓰인 작품은 제외)', () async {
+    final f = await repo.getFilterFacets();
+    // w-unused(Renaissance)는 어느 수록곡도 참조하지 않으므로 나오면 안 된다.
+    // 나온다면 works 전체에서 뽑고 있다는 뜻 — 0건 칩이 생긴다.
+    expect(f.periods, ['Romantic']);
+  });
+
+  test('★ period 필터 — Work 매칭된 앨범만 걸러낸다 (§17-22 3단 구조)', () async {
+    expect(await ids(const AlbumFilter(period: 'Romantic')), ['A']);
+    // B는 work_id가 null(미매칭)이라 어떤 시대로도 잡히지 않는다.
+    expect(await ids(const AlbumFilter(period: 'Renaissance')), isEmpty);
+    // 다른 축과 조합해도 교집합.
+    expect(
+      await ids(const AlbumFilter(period: 'Romantic', format: 'CD')),
+      ['A'],
+    );
+    expect(
+      await ids(const AlbumFilter(period: 'Romantic', format: 'LP')),
+      isEmpty,
+    );
   });
 
   test('축별 단독 필터', () async {

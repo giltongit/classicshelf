@@ -23,6 +23,7 @@ import '../models/album_filter.dart';
 import '../models/model_utils.dart';
 import '../models/album_summary.dart';
 import '../models/wishlist_entry.dart';
+import '../models/work.dart';
 import '../database/app_database.dart';
 import 'collection_repository.dart';
 
@@ -551,7 +552,32 @@ class CollectionRepositoryImpl implements CollectionRepository {
     }.map((s) => s.trim()).where((s) => s.isNotEmpty).toSet().toList()
       ..sort();
 
-    return (composers: composers, conductors: conductors);
+    // 시대 — compositions.work_id → works.period. 매칭된 곡이 없으면 빈 목록이고,
+    // 그때는 시트가 시대 섹션 자체를 감춘다(고를 수 없는 축을 노출하지 않는다).
+    final matchedWorkIds = (await (_db.selectOnly(_db.compositions)
+              ..addColumns([_db.compositions.workId])
+              ..where(_db.compositions.workId.isNotNull())
+              ..groupBy([_db.compositions.workId]))
+            .get())
+        .map((r) => r.read(_db.compositions.workId))
+        .whereType<String>()
+        .toList();
+
+    final periods = <String>[];
+    if (matchedWorkIds.isNotEmpty) {
+      final pq = _db.selectOnly(_db.works)
+        ..addColumns([_db.works.period])
+        ..where(_db.works.id.isIn(matchedWorkIds) &
+            _db.works.period.isNotNull())
+        ..groupBy([_db.works.period]);
+      periods.addAll((await pq.get())
+          .map((r) => r.read(_db.works.period))
+          .whereType<String>()
+          .toSet());
+      periods.sort(compareMusicalPeriods); // 가나다순이 아니라 연대순
+    }
+
+    return (composers: composers, conductors: conductors, periods: periods);
   }
 
   // ===========================================================================
@@ -570,6 +596,56 @@ class CollectionRepositoryImpl implements CollectionRepository {
   Future<int> localWorksCount() async {
     final q = _db.selectOnly(_db.works)..addColumns([_db.works.id.count()]);
     return (await q.getSingle()).read(_db.works.id.count()) ?? 0;
+  }
+
+  @override
+  Future<List<String>> suggestComposers(String query, {int limit = 20}) async {
+    final q = query.trim();
+    final sel = _db.selectOnly(_db.works)
+      ..addColumns([_db.works.composer])
+      ..groupBy([_db.works.composer])
+      ..orderBy([OrderingTerm.asc(_db.works.composer)])
+      ..limit(limit);
+    if (q.isNotEmpty) sel.where(_db.works.composer.like('%$q%'));
+
+    return (await sel.get())
+        .map((r) => r.read(_db.works.composer))
+        .whereType<String>()
+        .toList();
+  }
+
+  @override
+  Future<List<Work>> suggestWorks(String composer, String query,
+      {int limit = 30}) async {
+    final c = composer.trim();
+    if (c.isEmpty) return const [];
+    final q = query.trim();
+
+    final sel = _db.select(_db.works)
+      ..where((t) => t.composer.equals(c))
+      // popular > recommended > 제목순. 자동완성 첫 화면에 유명한 곡이 오게 한다.
+      ..orderBy([
+        (t) => OrderingTerm.desc(t.popular),
+        (t) => OrderingTerm.desc(t.recommended),
+        (t) => OrderingTerm.asc(t.title),
+      ])
+      ..limit(limit);
+    if (q.isNotEmpty) sel.where((t) => t.title.like('%$q%'));
+
+    return (await sel.get())
+        .map((r) => Work(
+              id: r.id,
+              composer: r.composer,
+              title: r.title,
+              catalogNumber: r.catalogNumber,
+              musicalKey: r.musicalKey,
+              genre: r.genre,
+              period: r.period,
+              popular: r.popular,
+              recommended: r.recommended,
+              source: r.source,
+            ))
+        .toList();
   }
 
   @override

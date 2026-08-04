@@ -46,6 +46,33 @@ class WorkAlias {
       );
 }
 
+/// 시대(period)의 연대순. Open Opus의 epoch 값을 그대로 쓴다.
+/// 정렬에만 쓰는 표시 순서다 — 가나다·알파벳순으로 두면 "20th Century, Baroque,
+/// Classical, Early Romantic…"처럼 시대 감각과 어긋난 목록이 된다.
+/// 여기 없는 값은 뒤에 붙인다(상류에서 새 epoch가 생겨도 누락되지 않게).
+const kMusicalPeriodOrder = [
+  'Medieval',
+  'Renaissance',
+  'Baroque',
+  'Classical',
+  'Early Romantic',
+  'Romantic',
+  'Late Romantic',
+  '20th Century',
+  'Post-War',
+  '21st Century',
+];
+
+/// [kMusicalPeriodOrder] 기준 연대순 비교. 목록에 없는 값은 뒤로.
+int compareMusicalPeriods(String a, String b) {
+  final ia = kMusicalPeriodOrder.indexOf(a);
+  final ib = kMusicalPeriodOrder.indexOf(b);
+  if (ia == -1 && ib == -1) return a.compareTo(b);
+  if (ia == -1) return 1;
+  if (ib == -1) return -1;
+  return ia.compareTo(ib);
+}
+
 /// 정규 작품
 class Work {
   final String id; // Open Opus / MusicBrainz 식별자
