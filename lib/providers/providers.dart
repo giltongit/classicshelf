@@ -91,6 +91,13 @@ final allAlbumSummariesProvider = StreamProvider<List<AlbumSummary>>((ref) {
       .watchAlbumSummaries(AlbumFilter.empty);
 });
 
+// ── 필터 시트 선택지 ────────────────────────────────────────────────────────────
+/// 작곡가·지휘자 distinct. autoDispose라 시트를 닫으면 버려지고 다음에 열 때
+/// 다시 읽는다 — 그 사이 앨범이 추가돼도 선택지가 낡지 않는다.
+final filterFacetsProvider = FutureProvider.autoDispose<FilterFacets>((ref) {
+  return ref.watch(collectionRepositoryProvider).getFilterFacets();
+});
+
 // ── 앨범 단건 (상세) ────────────────────────────────────────────────────────────
 /// 상세 화면 — 앨범 애그리게이트 단건.
 /// write가 albums를 touch하면 목록(watch)은 자동 갱신되나, 상세는 진입 시

@@ -21,6 +21,7 @@ import '../models/album_filter.dart';
 import '../models/album_summary.dart';
 import '../providers/providers.dart';
 import '../theme/app_theme.dart';
+import 'album_filter_sheet.dart';
 
 String _sortLabel(AlbumSort sort) => switch (sort) {
       AlbumSort.createdDesc => '등록순',
@@ -73,17 +74,9 @@ class AlbumListScreen extends ConsumerWidget {
                 .toList(),
           ),
 
-          // TODO: 클래식 필터 시트 (§6-3) — 작곡가 · 시대 · 포맷 · 소장상태
-          //   albumFilterProvider에 배선(composer/period/format/status/
-          //   onlyNeedsVerification)은 이미 있고 리포지토리도 처리한다.
-          //   빠진 건 시트 UI뿐이라, 붙일 때 화면 로직은 건드릴 필요 없다.
-          IconButton(
-            icon: const Icon(Icons.tune_rounded),
-            tooltip: '필터',
-            onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('필터 준비 중 (§6-3, 2B-2 이후)')),
-            ),
-          ),
+          // 필터 시트 (§6-3). 시트가 albumFilterProvider를 갱신하면 목록은
+          // reactive라 저절로 다시 그려진다 — 여기서 할 일이 없다.
+          _FilterButton(activeCount: filter.activeCount),
           IconButton(
             icon: const Icon(Icons.add),
             tooltip: '음반 추가',
@@ -154,6 +147,51 @@ class AlbumListScreen extends ConsumerWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+// ── 필터 버튼 ──────────────────────────────────────────────────────────────────
+// 활성 축 개수를 뱃지로 보여준다 — 시트를 열지 않고도 필터가 걸린 걸 알 수 있다.
+
+class _FilterButton extends StatelessWidget {
+  final int activeCount;
+  const _FilterButton({required this.activeCount});
+
+  @override
+  Widget build(BuildContext context) {
+    final button = IconButton(
+      icon: const Icon(Icons.tune_rounded),
+      tooltip: activeCount == 0 ? '필터' : '필터 ($activeCount개 적용 중)',
+      color: activeCount > 0 ? AppColors.gold : null,
+      onPressed: () => showAlbumFilterSheet(context),
+    );
+    if (activeCount == 0) return button;
+
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        button,
+        Positioned(
+          top: 8,
+          right: 6,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+            decoration: BoxDecoration(
+              color: AppColors.gold,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              '$activeCount',
+              style: const TextStyle(
+                color: AppColors.bg,
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

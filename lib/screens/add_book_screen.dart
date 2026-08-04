@@ -32,8 +32,8 @@ import '../theme/app_theme.dart';
 
 const _uuid = Uuid();
 
-/// 포맷 선택지 — albums.format은 자유 텍스트지만 입력은 이 넷으로 제한한다.
-const _formats = ['CD', 'LP', 'SACD', 'digital'];
+/// 포맷 선택지 — 필터 시트와 공유한다(album.dart의 kAlbumFormats).
+const _formats = kAlbumFormats;
 
 class AddAlbumScreen extends ConsumerStatefulWidget {
   /// null이면 신규 등록, 값이 있으면 그 앨범의 편집 모드.

@@ -515,6 +515,46 @@ class CollectionRepositoryImpl implements CollectionRepository {
   }
 
   @override
+  Future<FilterFacets> getFilterFacets() async {
+    // 작곡가 — 수록곡에만 있다.
+    final composerQ = _db.selectOnly(_db.compositions)
+      ..addColumns([_db.compositions.composer])
+      ..groupBy([_db.compositions.composer]);
+    final composers = (await composerQ.get())
+        .map((r) => r.read(_db.compositions.composer))
+        .whereType<String>()
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty)
+        .toSet() // groupBy 이후지만 trim 때문에 다시 겹칠 수 있다
+        .toList()
+      ..sort();
+
+    // 지휘자 — 앨범 기본값과 곡별 override 두 곳에 흩어져 있다(§3-3). 합집합.
+    //   필터 쿼리(getAlbumSummaries)도 두 테이블을 ∪로 보므로 선택지도 같아야 한다.
+    final apQ = _db.selectOnly(_db.albumPerformers)
+      ..addColumns([_db.albumPerformers.name])
+      ..where(_db.albumPerformers.role.equals(PerformerRole.conductor.value))
+      ..groupBy([_db.albumPerformers.name]);
+    final cpQ = _db.selectOnly(_db.compositionPerformers)
+      ..addColumns([_db.compositionPerformers.name])
+      ..where(
+          _db.compositionPerformers.role.equals(PerformerRole.conductor.value))
+      ..groupBy([_db.compositionPerformers.name]);
+
+    final conductors = <String>{
+      ...(await apQ.get())
+          .map((r) => r.read(_db.albumPerformers.name))
+          .whereType<String>(),
+      ...(await cpQ.get())
+          .map((r) => r.read(_db.compositionPerformers.name))
+          .whereType<String>(),
+    }.map((s) => s.trim()).where((s) => s.isNotEmpty).toSet().toList()
+      ..sort();
+
+    return (composers: composers, conductors: conductors);
+  }
+
+  @override
   Stream<List<AlbumSummary>> watchAlbumSummaries(AlbumFilter filter) {
     // albums 테이블 변경에 반응. write 경로는 저장 시 트랜잭션에 albums upsert
     // (updatedAt 갱신)를 항상 포함하므로, 하위(수록곡·연주자) 변경도 albums touch를

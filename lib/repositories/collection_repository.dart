@@ -33,6 +33,12 @@ typedef SyncResult = ({
   int skippedPending,
 });
 
+/// 필터 시트 선택지 — 이미 등록된 데이터에서 뽑은 distinct 값.
+/// composer·conductor 필터는 **정확 일치**(§6-3 쿼리)라 자유 텍스트로 받으면
+/// 한 글자만 달라도 0건이 된다. 있는 값 중에서 고르게 하려고 별도로 뽑는다.
+/// (Works 시드가 들어오면 자동완성으로 대체 가능 — 그때까지의 대안)
+typedef FilterFacets = ({List<String> composers, List<String> conductors});
+
 /// 저장된 애그리게이트 반환값. book처럼 서버 id를 되돌려줄 필요가 없어
 /// 도메인 Album을 그대로 반환한다(로컬=원격 동일 id).
 abstract interface class CollectionRepository {
@@ -45,6 +51,9 @@ abstract interface class CollectionRepository {
 
   /// 단일 앨범 애그리게이트(상세·편집용). 없으면 null.
   Future<Album?> getAlbum(String albumId);
+
+  /// 필터 시트 선택지(작곡가·지휘자). 등록된 데이터에서 distinct.
+  Future<FilterFacets> getFilterFacets();
 
   /// 희망 목록(독립 애그리게이트). 등록순(최신 위).
   Future<List<WishItem>> getWishlist();

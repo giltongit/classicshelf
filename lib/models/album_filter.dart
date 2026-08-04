@@ -44,6 +44,22 @@ class AlbumFilter {
 
   static const empty = AlbumFilter();
 
+  /// 필터 시트가 다루는 축의 활성 개수. 아이콘 뱃지용.
+  /// 검색어(query)·정렬(sort)은 화면에 별도 UI가 있으므로 세지 않는다.
+  int get activeCount => [
+        status != null,
+        format != null,
+        composer != null,
+        conductor != null,
+        period != null,
+        onlyNeedsVerification,
+      ].where((on) => on).length;
+
+  /// 시트의 "초기화" — 시트가 다루는 축만 해제하고 검색어·정렬은 보존한다.
+  /// AlbumFilter.empty로 통째 되돌리면 검색창 TextEditingController의 글자는
+  /// 남는데 필터만 풀려 화면과 상태가 어긋난다.
+  AlbumFilter clearedForSheet() => AlbumFilter(query: query, sort: sort);
+
   bool get isEmpty =>
       (query == null || query!.isEmpty) &&
       composer == null &&

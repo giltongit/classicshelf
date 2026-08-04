@@ -54,6 +54,10 @@ enum Confidence {
 /// 소장 상태 — disposed_at 기반 파생 (§6-2, 처분·분실 포함)
 enum HoldingStatus { owned, disposed }
 
+/// 포맷 선택지. albums.format은 자유 텍스트지만 입력·필터 모두 이 넷으로 제한한다.
+/// 등록 폼과 필터 시트가 같은 목록을 봐야 필터가 입력값을 놓치지 않는다.
+const kAlbumFormats = ['CD', 'LP', 'SACD', 'digital'];
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Performer — 값 객체. 저장에서는 album_performers/composition_performers 행.
 // ─────────────────────────────────────────────────────────────────────────────
