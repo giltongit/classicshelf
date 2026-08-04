@@ -78,6 +78,10 @@ abstract interface class CollectionRepository {
   Future<List<Work>> suggestWorks(String composer, String query,
       {int limit = 30});
 
+  /// 정규 작품 단건 조회(id → Work). 매칭된 수록곡의 정규명 표시용(§3-1a).
+  /// 로컬에 없는 id는 결과에서 빠진다 — 참조 데이터를 아직 안 받았을 수 있다.
+  Future<Map<String, Work>> getWorksByIds(Iterable<String> ids);
+
   /// 원격 works/work_aliases → 로컬 Drift 벌크 미러링.
   /// 참조 데이터는 사용자 소유가 아니라 공용 읽기 전용이므로 sync_queue와 무관하다
   /// (올릴 로컬 변경이 없다). 통째로 upsert하면 끝.

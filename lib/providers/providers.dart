@@ -9,6 +9,7 @@ import '../models/album.dart';
 import '../models/album_filter.dart';
 import '../models/album_summary.dart';
 import '../models/wishlist_entry.dart';
+import '../models/work.dart';
 import '../repositories/collection_repository.dart';
 import '../repositories/collection_repository_impl.dart';
 import '../repositories/profile_repository.dart';
@@ -160,6 +161,22 @@ final albumDetailProvider =
 /// albumSummariesProvider와 동일하게 Drift watch 기반 — 추가/삭제 후 invalidate 불필요.
 final wishlistProvider = StreamProvider<List<WishItem>>((ref) {
   return ref.watch(collectionRepositoryProvider).watchWishlist();
+});
+
+// ── 매칭된 정규 작품 (상세 표시용) ──────────────────────────────────────────────
+/// 앨범의 수록곡이 참조하는 Work를 id→Work로 모아 준다(§3-1a 정규명 표시).
+/// 참조 데이터를 아직 안 받았으면 빈 map이고, 화면은 사용자가 적은 제목으로
+/// 그대로 표시한다 — 조인이 없어도 상세가 깨지지 않는다.
+final albumWorksProvider =
+    FutureProvider.family<Map<String, Work>, String>((ref, albumId) async {
+  final album = await ref.watch(albumDetailProvider(albumId).future);
+  if (album == null) return const {};
+  final ids = album.compositions
+      .map((c) => c.workId)
+      .whereType<String>()
+      .toSet();
+  if (ids.isEmpty) return const {};
+  return ref.watch(collectionRepositoryProvider).getWorksByIds(ids);
 });
 
 // ── profile (book 무관 — 유지) ──────────────────────────────────────────────────

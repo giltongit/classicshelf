@@ -20,6 +20,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../models/album.dart';
+import '../models/work.dart';
 import '../providers/providers.dart';
 import '../theme/app_theme.dart';
 
@@ -84,6 +85,10 @@ class _AlbumDetailBody extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final compositions = [...album.compositions]
       ..sort((a, b) => a.seq.compareTo(b.seq));
+
+    // 매칭된 정규 작품(§3-1a 정규명 표시). 로딩·실패는 빈 map으로 흘려보낸다 —
+    // 표시를 거들 뿐이라 이것 때문에 상세를 스피너로 막지 않는다.
+    final works = ref.watch(albumWorksProvider(album.id)).value ?? const {};
 
     return Scaffold(
       body: CustomScrollView(
@@ -189,8 +194,14 @@ class _AlbumDetailBody extends ConsumerWidget {
                   const Text('등록된 수록곡이 없습니다',
                       style: TextStyle(color: AppColors.muted, fontSize: 13))
                 else
+                  // 매칭된 Work는 별도 조회다(애그리게이트 밖의 참조 데이터).
+                  // 아직 안 왔거나 실패하면 빈 map → 사용자가 적은 제목으로
+                  // 그대로 그린다. 상세가 조인에 의존해 깨지지 않게 한다.
                   ...compositions.map(
-                    (c) => _CompositionBlock(composition: c),
+                    (c) => _CompositionBlock(
+                      composition: c,
+                      work: works[c.workId],
+                    ),
                   ),
               ]),
             ),
@@ -382,9 +393,61 @@ class _PerformerLine extends StatelessWidget {
 
 // ── 수록곡 블록 (2단) + 악장 (3단) ─────────────────────────────────────────────
 
+/// 수록곡 한 줄의 표시 구성 (§3-1a 표시 우선순위).
+///
+/// 우선순위:
+///   1) 매칭된 Work의 정규명이 있으면 그것이 주 표시.
+///   2) 없으면 사용자가 적은 제목.
+///   3) 그것도 없으면(구 데이터·미입력) "작곡가 · 작품번호".
+///
+/// 사용자가 적은 제목은 매칭돼도 **버리지 않는다** — 발췌·편곡판 등 이 음반
+/// 고유의 표기가 거기에만 있는 경우가 많다. 정규명과 다를 때만 `albumLabel`로
+/// 내려 보존한다(같으면 같은 줄을 두 번 보여줄 이유가 없다).
+///
+/// `showMeta`는 주 표시가 이미 meta 그 자체인 경우(3번)를 걸러 같은 문자열이
+/// 위아래로 겹쳐 보이는 걸 막는다.
+typedef CompositionDisplayLines = ({
+  String heading,
+  String meta,
+  String? albumLabel,
+  bool showMeta,
+});
+
+CompositionDisplayLines compositionDisplayLines({
+  required String composer,
+  String? catalogNumber,
+  String? userTitle,
+  String? canonicalTitle,
+}) {
+  final title = (userTitle ?? '').trim();
+  final canonical = (canonicalTitle ?? '').trim();
+  final meta = [
+    composer,
+    if ((catalogNumber ?? '').trim().isNotEmpty) catalogNumber!.trim(),
+  ].join(' · ');
+
+  final heading =
+      canonical.isNotEmpty ? canonical : (title.isNotEmpty ? title : meta);
+  final albumLabel =
+      (canonical.isNotEmpty && title.isNotEmpty && title != canonical)
+          ? title
+          : null;
+
+  return (
+    heading: heading,
+    meta: meta,
+    albumLabel: albumLabel,
+    showMeta: meta.isNotEmpty && heading != meta,
+  );
+}
+
 class _CompositionBlock extends StatelessWidget {
   final Composition composition;
-  const _CompositionBlock({required this.composition});
+
+  /// 매칭된 정규 작품. null = 미매칭이거나 참조 데이터를 아직 안 받은 상태.
+  final Work? work;
+
+  const _CompositionBlock({required this.composition, this.work});
 
   @override
   Widget build(BuildContext context) {
@@ -397,20 +460,16 @@ class _CompositionBlock extends StatelessWidget {
         ? composition.performerOverrides!
         : const <Performer>[];
 
-    // TODO: Work 조인 표시 (대 2)
-    //   workId가 매칭되면 Work 정규명을 주 표시로 올리되, 아래 title은 음반
-    //   고유 표기(발췌·편곡판 등)라 함께 보존해 부가로 남긴다. 지금은 조인
-    //   경로가 없어 사용자가 적은 title만 쓴다.
-    //
-    // 제목이 있으면 그것이 주 표시, 작곡가·작품번호는 부가정보 줄로 내린다.
-    // 제목이 없으면(구 데이터·미입력) 종전대로 작곡가 · 작품번호를 주 표시로.
-    final title = (composition.title ?? '').trim();
-    final meta = [
-      composition.composer,
-      if ((composition.catalogNumber ?? '').isNotEmpty)
-        composition.catalogNumber!,
-    ].join(' · ');
-    final heading = title.isNotEmpty ? title : meta;
+    final lines = compositionDisplayLines(
+      composer: composition.composer,
+      catalogNumber: composition.catalogNumber,
+      userTitle: composition.title,
+      canonicalTitle: work?.title,
+    );
+    final heading = lines.heading;
+    final meta = lines.meta;
+    final albumLabel = lines.albumLabel;
+    final showMeta = lines.showMeta;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 18),
@@ -430,6 +489,12 @@ class _CompositionBlock extends StatelessWidget {
                   ),
                 ),
               ),
+              // 정규 작품과 이어진 곡 — 등록 폼의 "연결됨" 표시와 짝을 이룬다.
+              if (work != null)
+                const Padding(
+                  padding: EdgeInsets.only(left: 6, top: 3),
+                  child: Icon(Icons.link, size: 13, color: AppColors.gold),
+                ),
               if (composition.confidence == Confidence.unverified)
                 const Padding(
                   padding: EdgeInsets.only(left: 8, top: 2),
@@ -439,13 +504,23 @@ class _CompositionBlock extends StatelessWidget {
             ],
           ),
 
-          // 제목을 주 표시로 올린 경우에만 작곡가 · 작품번호를 아래에 덧붙인다.
-          if (title.isNotEmpty && meta.isNotEmpty)
+          // 주 표시가 제목류일 때만 작곡가 · 작품번호를 아래에 덧붙인다.
+          if (showMeta)
             Padding(
               padding: const EdgeInsets.only(top: 2),
               child: Text(
                 meta,
                 style: const TextStyle(color: AppColors.muted, fontSize: 12),
+              ),
+            ),
+
+          // 정규명에 밀렸지만 버리지 않은 음반 고유 표기.
+          if (albumLabel != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text(
+                '음반 표기: $albumLabel',
+                style: const TextStyle(color: AppColors.dim, fontSize: 11),
               ),
             ),
 

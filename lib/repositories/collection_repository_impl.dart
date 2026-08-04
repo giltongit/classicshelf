@@ -599,6 +599,28 @@ class CollectionRepositoryImpl implements CollectionRepository {
   }
 
   @override
+  Future<Map<String, Work>> getWorksByIds(Iterable<String> ids) async {
+    final list = ids.toSet().toList();
+    if (list.isEmpty) return const {};
+    final rows =
+        await (_db.select(_db.works)..where((t) => t.id.isIn(list))).get();
+    return {for (final r in rows) r.id: _workFromRow(r)};
+  }
+
+  Work _workFromRow(WorkData r) => Work(
+        id: r.id,
+        composer: r.composer,
+        title: r.title,
+        catalogNumber: r.catalogNumber,
+        musicalKey: r.musicalKey,
+        genre: r.genre,
+        period: r.period,
+        popular: r.popular,
+        recommended: r.recommended,
+        source: r.source,
+      );
+
+  @override
   Future<List<String>> suggestComposers(String query, {int limit = 20}) async {
     final q = query.trim();
     final sel = _db.selectOnly(_db.works)
@@ -632,20 +654,7 @@ class CollectionRepositoryImpl implements CollectionRepository {
       ..limit(limit);
     if (q.isNotEmpty) sel.where((t) => t.title.like('%$q%'));
 
-    return (await sel.get())
-        .map((r) => Work(
-              id: r.id,
-              composer: r.composer,
-              title: r.title,
-              catalogNumber: r.catalogNumber,
-              musicalKey: r.musicalKey,
-              genre: r.genre,
-              period: r.period,
-              popular: r.popular,
-              recommended: r.recommended,
-              source: r.source,
-            ))
-        .toList();
+    return (await sel.get()).map(_workFromRow).toList();
   }
 
   @override
