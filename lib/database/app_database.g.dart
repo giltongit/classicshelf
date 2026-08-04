@@ -4561,6 +4561,26 @@ class $WishlistTable extends Wishlist
       'REFERENCES works (id)',
     ),
   );
+  static const VerificationMeta _composerMeta = const VerificationMeta(
+    'composer',
+  );
+  @override
+  late final GeneratedColumn<String> composer = GeneratedColumn<String>(
+    'composer',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _titleMeta = const VerificationMeta('title');
+  @override
+  late final GeneratedColumn<String> title = GeneratedColumn<String>(
+    'title',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _priorityMeta = const VerificationMeta(
     'priority',
   );
@@ -4600,6 +4620,8 @@ class $WishlistTable extends Wishlist
     type,
     albumId,
     workId,
+    composer,
+    title,
     priority,
     note,
     createdAt,
@@ -4649,6 +4671,18 @@ class $WishlistTable extends Wishlist
         workId.isAcceptableOrUnknown(data['work_id']!, _workIdMeta),
       );
     }
+    if (data.containsKey('composer')) {
+      context.handle(
+        _composerMeta,
+        composer.isAcceptableOrUnknown(data['composer']!, _composerMeta),
+      );
+    }
+    if (data.containsKey('title')) {
+      context.handle(
+        _titleMeta,
+        title.isAcceptableOrUnknown(data['title']!, _titleMeta),
+      );
+    }
     if (data.containsKey('priority')) {
       context.handle(
         _priorityMeta,
@@ -4696,6 +4730,14 @@ class $WishlistTable extends Wishlist
         DriftSqlType.string,
         data['${effectivePrefix}work_id'],
       ),
+      composer: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}composer'],
+      ),
+      title: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}title'],
+      ),
       priority: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}priority'],
@@ -4723,6 +4765,8 @@ class WishlistData extends DataClass implements Insertable<WishlistData> {
   final String type;
   final String? albumId;
   final String? workId;
+  final String? composer;
+  final String? title;
   final int? priority;
   final String? note;
   final DateTime createdAt;
@@ -4732,6 +4776,8 @@ class WishlistData extends DataClass implements Insertable<WishlistData> {
     required this.type,
     this.albumId,
     this.workId,
+    this.composer,
+    this.title,
     this.priority,
     this.note,
     required this.createdAt,
@@ -4747,6 +4793,12 @@ class WishlistData extends DataClass implements Insertable<WishlistData> {
     }
     if (!nullToAbsent || workId != null) {
       map['work_id'] = Variable<String>(workId);
+    }
+    if (!nullToAbsent || composer != null) {
+      map['composer'] = Variable<String>(composer);
+    }
+    if (!nullToAbsent || title != null) {
+      map['title'] = Variable<String>(title);
     }
     if (!nullToAbsent || priority != null) {
       map['priority'] = Variable<int>(priority);
@@ -4769,6 +4821,12 @@ class WishlistData extends DataClass implements Insertable<WishlistData> {
       workId: workId == null && nullToAbsent
           ? const Value.absent()
           : Value(workId),
+      composer: composer == null && nullToAbsent
+          ? const Value.absent()
+          : Value(composer),
+      title: title == null && nullToAbsent
+          ? const Value.absent()
+          : Value(title),
       priority: priority == null && nullToAbsent
           ? const Value.absent()
           : Value(priority),
@@ -4788,6 +4846,8 @@ class WishlistData extends DataClass implements Insertable<WishlistData> {
       type: serializer.fromJson<String>(json['type']),
       albumId: serializer.fromJson<String?>(json['albumId']),
       workId: serializer.fromJson<String?>(json['workId']),
+      composer: serializer.fromJson<String?>(json['composer']),
+      title: serializer.fromJson<String?>(json['title']),
       priority: serializer.fromJson<int?>(json['priority']),
       note: serializer.fromJson<String?>(json['note']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
@@ -4802,6 +4862,8 @@ class WishlistData extends DataClass implements Insertable<WishlistData> {
       'type': serializer.toJson<String>(type),
       'albumId': serializer.toJson<String?>(albumId),
       'workId': serializer.toJson<String?>(workId),
+      'composer': serializer.toJson<String?>(composer),
+      'title': serializer.toJson<String?>(title),
       'priority': serializer.toJson<int?>(priority),
       'note': serializer.toJson<String?>(note),
       'createdAt': serializer.toJson<DateTime>(createdAt),
@@ -4814,6 +4876,8 @@ class WishlistData extends DataClass implements Insertable<WishlistData> {
     String? type,
     Value<String?> albumId = const Value.absent(),
     Value<String?> workId = const Value.absent(),
+    Value<String?> composer = const Value.absent(),
+    Value<String?> title = const Value.absent(),
     Value<int?> priority = const Value.absent(),
     Value<String?> note = const Value.absent(),
     DateTime? createdAt,
@@ -4823,6 +4887,8 @@ class WishlistData extends DataClass implements Insertable<WishlistData> {
     type: type ?? this.type,
     albumId: albumId.present ? albumId.value : this.albumId,
     workId: workId.present ? workId.value : this.workId,
+    composer: composer.present ? composer.value : this.composer,
+    title: title.present ? title.value : this.title,
     priority: priority.present ? priority.value : this.priority,
     note: note.present ? note.value : this.note,
     createdAt: createdAt ?? this.createdAt,
@@ -4834,6 +4900,8 @@ class WishlistData extends DataClass implements Insertable<WishlistData> {
       type: data.type.present ? data.type.value : this.type,
       albumId: data.albumId.present ? data.albumId.value : this.albumId,
       workId: data.workId.present ? data.workId.value : this.workId,
+      composer: data.composer.present ? data.composer.value : this.composer,
+      title: data.title.present ? data.title.value : this.title,
       priority: data.priority.present ? data.priority.value : this.priority,
       note: data.note.present ? data.note.value : this.note,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
@@ -4848,6 +4916,8 @@ class WishlistData extends DataClass implements Insertable<WishlistData> {
           ..write('type: $type, ')
           ..write('albumId: $albumId, ')
           ..write('workId: $workId, ')
+          ..write('composer: $composer, ')
+          ..write('title: $title, ')
           ..write('priority: $priority, ')
           ..write('note: $note, ')
           ..write('createdAt: $createdAt')
@@ -4856,8 +4926,18 @@ class WishlistData extends DataClass implements Insertable<WishlistData> {
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, userId, type, albumId, workId, priority, note, createdAt);
+  int get hashCode => Object.hash(
+    id,
+    userId,
+    type,
+    albumId,
+    workId,
+    composer,
+    title,
+    priority,
+    note,
+    createdAt,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -4867,6 +4947,8 @@ class WishlistData extends DataClass implements Insertable<WishlistData> {
           other.type == this.type &&
           other.albumId == this.albumId &&
           other.workId == this.workId &&
+          other.composer == this.composer &&
+          other.title == this.title &&
           other.priority == this.priority &&
           other.note == this.note &&
           other.createdAt == this.createdAt);
@@ -4878,6 +4960,8 @@ class WishlistCompanion extends UpdateCompanion<WishlistData> {
   final Value<String> type;
   final Value<String?> albumId;
   final Value<String?> workId;
+  final Value<String?> composer;
+  final Value<String?> title;
   final Value<int?> priority;
   final Value<String?> note;
   final Value<DateTime> createdAt;
@@ -4888,6 +4972,8 @@ class WishlistCompanion extends UpdateCompanion<WishlistData> {
     this.type = const Value.absent(),
     this.albumId = const Value.absent(),
     this.workId = const Value.absent(),
+    this.composer = const Value.absent(),
+    this.title = const Value.absent(),
     this.priority = const Value.absent(),
     this.note = const Value.absent(),
     this.createdAt = const Value.absent(),
@@ -4899,6 +4985,8 @@ class WishlistCompanion extends UpdateCompanion<WishlistData> {
     required String type,
     this.albumId = const Value.absent(),
     this.workId = const Value.absent(),
+    this.composer = const Value.absent(),
+    this.title = const Value.absent(),
     this.priority = const Value.absent(),
     this.note = const Value.absent(),
     this.createdAt = const Value.absent(),
@@ -4912,6 +5000,8 @@ class WishlistCompanion extends UpdateCompanion<WishlistData> {
     Expression<String>? type,
     Expression<String>? albumId,
     Expression<String>? workId,
+    Expression<String>? composer,
+    Expression<String>? title,
     Expression<int>? priority,
     Expression<String>? note,
     Expression<DateTime>? createdAt,
@@ -4923,6 +5013,8 @@ class WishlistCompanion extends UpdateCompanion<WishlistData> {
       if (type != null) 'type': type,
       if (albumId != null) 'album_id': albumId,
       if (workId != null) 'work_id': workId,
+      if (composer != null) 'composer': composer,
+      if (title != null) 'title': title,
       if (priority != null) 'priority': priority,
       if (note != null) 'note': note,
       if (createdAt != null) 'created_at': createdAt,
@@ -4936,6 +5028,8 @@ class WishlistCompanion extends UpdateCompanion<WishlistData> {
     Value<String>? type,
     Value<String?>? albumId,
     Value<String?>? workId,
+    Value<String?>? composer,
+    Value<String?>? title,
     Value<int?>? priority,
     Value<String?>? note,
     Value<DateTime>? createdAt,
@@ -4947,6 +5041,8 @@ class WishlistCompanion extends UpdateCompanion<WishlistData> {
       type: type ?? this.type,
       albumId: albumId ?? this.albumId,
       workId: workId ?? this.workId,
+      composer: composer ?? this.composer,
+      title: title ?? this.title,
       priority: priority ?? this.priority,
       note: note ?? this.note,
       createdAt: createdAt ?? this.createdAt,
@@ -4972,6 +5068,12 @@ class WishlistCompanion extends UpdateCompanion<WishlistData> {
     if (workId.present) {
       map['work_id'] = Variable<String>(workId.value);
     }
+    if (composer.present) {
+      map['composer'] = Variable<String>(composer.value);
+    }
+    if (title.present) {
+      map['title'] = Variable<String>(title.value);
+    }
     if (priority.present) {
       map['priority'] = Variable<int>(priority.value);
     }
@@ -4995,6 +5097,8 @@ class WishlistCompanion extends UpdateCompanion<WishlistData> {
           ..write('type: $type, ')
           ..write('albumId: $albumId, ')
           ..write('workId: $workId, ')
+          ..write('composer: $composer, ')
+          ..write('title: $title, ')
           ..write('priority: $priority, ')
           ..write('note: $note, ')
           ..write('createdAt: $createdAt, ')
@@ -9682,6 +9786,8 @@ typedef $$WishlistTableCreateCompanionBuilder =
       required String type,
       Value<String?> albumId,
       Value<String?> workId,
+      Value<String?> composer,
+      Value<String?> title,
       Value<int?> priority,
       Value<String?> note,
       Value<DateTime> createdAt,
@@ -9694,6 +9800,8 @@ typedef $$WishlistTableUpdateCompanionBuilder =
       Value<String> type,
       Value<String?> albumId,
       Value<String?> workId,
+      Value<String?> composer,
+      Value<String?> title,
       Value<int?> priority,
       Value<String?> note,
       Value<DateTime> createdAt,
@@ -9760,6 +9868,16 @@ class $$WishlistTableFilterComposer
 
   ColumnFilters<String> get type => $composableBuilder(
     column: $table.type,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get composer => $composableBuilder(
+    column: $table.composer,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get title => $composableBuilder(
+    column: $table.title,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -9849,6 +9967,16 @@ class $$WishlistTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get composer => $composableBuilder(
+    column: $table.composer,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get priority => $composableBuilder(
     column: $table.priority,
     builder: (column) => ColumnOrderings(column),
@@ -9928,6 +10056,12 @@ class $$WishlistTableAnnotationComposer
 
   GeneratedColumn<String> get type =>
       $composableBuilder(column: $table.type, builder: (column) => column);
+
+  GeneratedColumn<String> get composer =>
+      $composableBuilder(column: $table.composer, builder: (column) => column);
+
+  GeneratedColumn<String> get title =>
+      $composableBuilder(column: $table.title, builder: (column) => column);
 
   GeneratedColumn<int> get priority =>
       $composableBuilder(column: $table.priority, builder: (column) => column);
@@ -10018,6 +10152,8 @@ class $$WishlistTableTableManager
                 Value<String> type = const Value.absent(),
                 Value<String?> albumId = const Value.absent(),
                 Value<String?> workId = const Value.absent(),
+                Value<String?> composer = const Value.absent(),
+                Value<String?> title = const Value.absent(),
                 Value<int?> priority = const Value.absent(),
                 Value<String?> note = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
@@ -10028,6 +10164,8 @@ class $$WishlistTableTableManager
                 type: type,
                 albumId: albumId,
                 workId: workId,
+                composer: composer,
+                title: title,
                 priority: priority,
                 note: note,
                 createdAt: createdAt,
@@ -10040,6 +10178,8 @@ class $$WishlistTableTableManager
                 required String type,
                 Value<String?> albumId = const Value.absent(),
                 Value<String?> workId = const Value.absent(),
+                Value<String?> composer = const Value.absent(),
+                Value<String?> title = const Value.absent(),
                 Value<int?> priority = const Value.absent(),
                 Value<String?> note = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
@@ -10050,6 +10190,8 @@ class $$WishlistTableTableManager
                 type: type,
                 albumId: albumId,
                 workId: workId,
+                composer: composer,
+                title: title,
                 priority: priority,
                 note: note,
                 createdAt: createdAt,

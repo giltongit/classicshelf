@@ -8,6 +8,7 @@ import '../database/app_database.dart';
 import '../models/album.dart';
 import '../models/album_filter.dart';
 import '../models/album_summary.dart';
+import '../models/wishlist_entry.dart';
 import '../repositories/collection_repository.dart';
 import '../repositories/collection_repository_impl.dart';
 import '../repositories/profile_repository.dart';
@@ -98,6 +99,13 @@ final allAlbumSummariesProvider = StreamProvider<List<AlbumSummary>>((ref) {
 final albumDetailProvider =
     FutureProvider.family<Album?, String>((ref, albumId) {
   return ref.watch(collectionRepositoryProvider).getAlbum(albumId);
+});
+
+// ── 희망 목록 (reactive) ────────────────────────────────────────────────────────
+/// wishlist는 Album과 별개 독립 애그리게이트(§3-2)라 앨범 필터를 타지 않는다.
+/// albumSummariesProvider와 동일하게 Drift watch 기반 — 추가/삭제 후 invalidate 불필요.
+final wishlistProvider = StreamProvider<List<WishItem>>((ref) {
+  return ref.watch(collectionRepositoryProvider).watchWishlist();
 });
 
 // ── profile (book 무관 — 유지) ──────────────────────────────────────────────────

@@ -40,6 +40,11 @@ class MainScaffold extends StatelessWidget {
           //   BottomNavigationBar 항목 수는 app_router 의 StatefulShellBranch
           //   개수와 반드시 같아야 하므로(불일치 시 런타임 크래시) 함께 뺐다.
           BottomNavigationBarItem(
+            icon: Icon(Icons.favorite_border),
+            activeIcon: Icon(Icons.favorite),
+            label: '희망',
+          ),
+          BottomNavigationBarItem(
             icon: Icon(Icons.settings_outlined),
             activeIcon: Icon(Icons.settings),
             label: '설정',

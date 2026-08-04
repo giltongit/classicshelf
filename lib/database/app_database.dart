@@ -166,8 +166,13 @@ class Wishlist extends Table {                             // 희망 목록 (§6
   TextColumn get id => text()();
   TextColumn get userId => text()();
   TextColumn get type => text()();                        // 'album' | 'work'
+  // 확정 연결 — Works 시드(대 1-A)·자동 해소 감지가 붙는 이후 작업에서 채운다.
+  // 지금은 보통 null이고, 위시는 아래 composer/title 자유 텍스트로 표현한다.
   TextColumn get albumId => text().nullable().references(Albums, #id)();
   TextColumn get workId => text().nullable().references(Works, #id)();
+  // 자유 텍스트 (§3-1a compositions.title 선례와 동일 성격 — FK 없이도 표현 가능)
+  TextColumn get composer => text().nullable()();
+  TextColumn get title => text().nullable()();           // 작품명 또는 음반명
   IntColumn get priority => integer().nullable()();
   TextColumn get note => text().nullable()();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
@@ -209,7 +214,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -222,6 +227,13 @@ class AppDatabase extends _$AppDatabase {
           // v2: compositions.title (Supabase 20260727080019_composition_title)
           if (from < 2) {
             await m.addColumn(compositions, compositions.title);
+          }
+          // v3: wishlist.composer/title (Supabase 20260804120000_wishlist_free_text)
+          //   CHECK 제약 완화는 서버 쪽 이야기다 — 로컬은 FK 강제를 켜지 않으므로
+          //   컬럼 추가만으로 충분하다.
+          if (from < 3) {
+            await m.addColumn(wishlist, wishlist.composer);
+            await m.addColumn(wishlist, wishlist.title);
           }
         },
       );

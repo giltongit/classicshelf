@@ -6,6 +6,7 @@ import '../screens/book_list_screen.dart';
 import '../screens/home_screen.dart';
 import '../screens/main_scaffold.dart';
 import '../screens/settings_screen.dart';
+import '../screens/wishlist_screen.dart';
 
 // TODO: 클래식 재작성 (2B)
 //   2A에서 제거한 라우트: /stats(+year/author/monthly/wishlist/genre),
@@ -15,7 +16,9 @@ import '../screens/settings_screen.dart';
 final appRouter = GoRouter(
   initialLocation: '/home',
   routes: [
-    // ── 하단 탭 3개 (홈 / 서가 / 설정) ──────────────────────────────────────
+    // ── 하단 탭 4개 (홈 / 서가 / 희망 / 설정) ────────────────────────────────
+    // 아래 branches 개수는 main_scaffold 의 BottomNavigationBarItem 개수와
+    // 반드시 같아야 한다(불일치 시 런타임 크래시). 순서도 일치시킬 것.
     StatefulShellRoute.indexedStack(
       builder: (context, state, navigationShell) =>
           MainScaffold(navigationShell: navigationShell),
@@ -30,6 +33,12 @@ final appRouter = GoRouter(
           GoRoute(
             path: '/',
             builder: (context, state) => const AlbumListScreen(),
+          ),
+        ]),
+        StatefulShellBranch(routes: [
+          GoRoute(
+            path: '/wishlist',
+            builder: (context, state) => const WishlistScreen(),
           ),
         ]),
         StatefulShellBranch(routes: [

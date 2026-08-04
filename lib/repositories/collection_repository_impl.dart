@@ -207,7 +207,8 @@ class CollectionRepositoryImpl implements CollectionRepository {
   Future<WishItem> saveWishItem(WishItem item) async {
     if (!item.isValid) {
       throw ArgumentError('WishItem 정합 위반: type=${item.type} '
-          'albumId=${item.albumId} workId=${item.workId}');
+          'albumId=${item.albumId} workId=${item.workId} '
+          'composer=${item.composer} title=${item.title}');
     }
     final userId = _currentUserId();
     await _db.into(_db.wishlist).insertOnConflictUpdate(
@@ -653,20 +654,32 @@ class CollectionRepositoryImpl implements CollectionRepository {
     }
   }
 
+  /// 등록순(최신 위). 정렬을 쿼리에 두어 조회·구독 양쪽이 같은 순서를 낸다.
+  SimpleSelectStatement<$WishlistTable, WishlistData> _wishlistQuery() =>
+      _db.select(_db.wishlist)
+        ..orderBy([(t) => OrderingTerm.desc(t.createdAt)]);
+
+  WishItem _wishFromRow(WishlistData r) => WishItem(
+        id: r.id,
+        type: WishType.fromString(r.type),
+        albumId: r.albumId,
+        workId: r.workId,
+        composer: r.composer,
+        title: r.title,
+        priority: r.priority,
+        note: r.note,
+        createdAt: r.createdAt,
+      );
+
   @override
   Future<List<WishItem>> getWishlist() async {
-    final rows = await _db.select(_db.wishlist).get();
-    return rows
-        .map((r) => WishItem(
-              id: r.id,
-              type: WishType.fromString(r.type),
-              albumId: r.albumId,
-              workId: r.workId,
-              priority: r.priority,
-              note: r.note,
-            ))
-        .toList();
+    final rows = await _wishlistQuery().get();
+    return rows.map(_wishFromRow).toList();
   }
+
+  @override
+  Stream<List<WishItem>> watchWishlist() =>
+      _wishlistQuery().watch().map((rows) => rows.map(_wishFromRow).toList());
 
   // ===========================================================================
   // flush / 원격 동기화 — (A) 범위 밖. 다음 단계에서 구현.
@@ -1244,7 +1257,11 @@ class CollectionRepositoryImpl implements CollectionRepository {
         type: Value(w.type.value),
         albumId: Value(w.albumId),
         workId: Value(w.workId),
+        composer: Value(w.composer),
+        title: Value(w.title),
         priority: Value(w.priority),
         note: Value(w.note),
+        // createdAt은 넘기지 않는다 — DB 기본값(currentDateAndTime)에 맡긴다.
+        // 재저장(upsert) 시에도 Value.absent()라 기존 등록일이 보존된다.
       );
 }

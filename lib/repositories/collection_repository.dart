@@ -46,8 +46,11 @@ abstract interface class CollectionRepository {
   /// 단일 앨범 애그리게이트(상세·편집용). 없으면 null.
   Future<Album?> getAlbum(String albumId);
 
-  /// 희망 목록(독립 애그리게이트).
+  /// 희망 목록(독립 애그리게이트). 등록순(최신 위).
   Future<List<WishItem>> getWishlist();
+
+  /// 반응형 희망 목록 — watchAlbumSummaries와 같은 Drift .watch() 패턴.
+  Stream<List<WishItem>> watchWishlist();
 
   // ── 쓰기 (애그리게이트 단위) ──────────────────────────────────────────────
   /// 앨범 애그리게이트를 통째로 저장(신규/수정 공용).
