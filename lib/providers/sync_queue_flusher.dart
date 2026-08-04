@@ -37,6 +37,16 @@ class SyncQueueFlusher extends AsyncNotifier<void> {
       // uid 확보 직후 1회 — 서버 최신 수신 → 원격 유실 행 복원.
       // fire-and-forget(앱 기동 비차단)이되 둘의 순서는 보장한다(아래 주석 참조).
       unawaited(_syncThenReconcile());
+
+      // 참조 데이터(Works)는 사용자 데이터와 무관한 별도 경로다 — 위 체인의
+      // 순서 제약(flush→sync→reconcile)에 낄 이유가 없고, 24,760건이라
+      // 오래 걸려 사용자 데이터 동기화를 막아서도 안 된다. 병렬로 띄운다.
+      // 로컬이 이미 차 있으면 즉시 반환한다.
+      unawaited(
+        ref.read(worksSyncProvider.notifier).syncIfEmpty().catchError((Object e) {
+          debugPrint('[WORKS] 앱 시작 동기화 오류: $e');
+        }),
+      );
     }
 
     // 온라인 복귀 감지 → flush

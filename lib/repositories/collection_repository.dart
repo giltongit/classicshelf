@@ -33,6 +33,9 @@ typedef SyncResult = ({
   int skippedPending,
 });
 
+/// 참조 데이터(Works) 동기화 결과. 화면이 표시한다.
+typedef WorksSyncResult = ({int works, int aliases});
+
 /// 필터 시트 선택지 — 이미 등록된 데이터에서 뽑은 distinct 값.
 /// composer·conductor 필터는 **정확 일치**(§6-3 쿼리)라 자유 텍스트로 받으면
 /// 한 글자만 달라도 0건이 된다. 있는 값 중에서 고르게 하려고 별도로 뽑는다.
@@ -54,6 +57,15 @@ abstract interface class CollectionRepository {
 
   /// 필터 시트 선택지(작곡가·지휘자). 등록된 데이터에서 distinct.
   Future<FilterFacets> getFilterFacets();
+
+  // ── 참조 데이터(Works) ────────────────────────────────────────────────────
+  /// 로컬 works 행 수. 0이면 아직 참조 데이터를 안 받았다는 뜻(앱 시작 자동 동기화 판단).
+  Future<int> localWorksCount();
+
+  /// 원격 works/work_aliases → 로컬 Drift 벌크 미러링.
+  /// 참조 데이터는 사용자 소유가 아니라 공용 읽기 전용이므로 sync_queue와 무관하다
+  /// (올릴 로컬 변경이 없다). 통째로 upsert하면 끝.
+  Future<WorksSyncResult> syncWorksFromRemote();
 
   /// 희망 목록(독립 애그리게이트). 등록순(최신 위).
   Future<List<WishItem>> getWishlist();

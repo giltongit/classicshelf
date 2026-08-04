@@ -76,6 +76,8 @@ class SettingsScreen extends ConsumerWidget {
               ],
             ),
           ),
+          const _SectionHeader('작품 데이터'),
+          const _WorksSyncTile(),
           // TODO: 클래식 재작성 (2B)
           //   '데이터 관리' 섹션 전체를 비활성화했다. 원래 항목:
           //     - CSV로 내보내기  (csv_export_service, bookRepositoryProvider)
@@ -157,6 +159,59 @@ class SettingsScreen extends ConsumerWidget {
   //   _exportCsv  : bookRepositoryProvider.getBooks() + CsvExportService.export()
   //   _backfillKdc: booksProvider + LibrarySearchService.getClassNo + updateBook(kdc)
   //   둘 다 book 전용 프로바이더·서비스에 의존해 컴파일 불가였다.
+}
+
+/// 참조 데이터(Works) 동기화 타일.
+/// 앱 시작 시 로컬이 비어 있으면 자동으로 한 번 받고, 여기서는 수동 재동기화만
+/// 제공한다(자동 주기 갱신은 미정 — §17-3).
+class _WorksSyncTile extends ConsumerWidget {
+  const _WorksSyncTile();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(worksSyncProvider);
+    final syncing = state.isLoading;
+
+    final subtitle = switch (state) {
+      AsyncLoading() => '내려받는 중… (2만여 건이라 시간이 걸립니다)',
+      AsyncError(:final error) => '동기화 실패: $error',
+      AsyncData(:final value) when value == 0 =>
+        '아직 받지 않았습니다. 탭하면 작곡가·작품 목록을 내려받습니다',
+      AsyncData(:final value) => '작품 $value건 보유 — 탭하면 다시 받습니다',
+    };
+
+    return ListTile(
+      leading: syncing
+          ? const SizedBox(
+              width: 22,
+              height: 22,
+              child: CircularProgressIndicator(
+                  strokeWidth: 2, color: AppColors.gold),
+            )
+          : const Icon(Icons.library_music_outlined, color: AppColors.gold),
+      title: const Text('작품 데이터 새로고침',
+          style: TextStyle(color: AppColors.cream, fontSize: 15)),
+      subtitle: Text(
+        subtitle,
+        style: TextStyle(
+          color: state.hasError ? AppColors.red : AppColors.muted,
+          fontSize: 12,
+        ),
+      ),
+      onTap: syncing
+          ? null
+          : () async {
+              final messenger = ScaffoldMessenger.of(context);
+              await ref.read(worksSyncProvider.notifier).sync();
+              final s = ref.read(worksSyncProvider);
+              messenger.showSnackBar(SnackBar(
+                content: Text(s.hasError
+                    ? '작품 데이터 동기화 실패'
+                    : '작품 ${s.value ?? 0}건을 받았습니다'),
+              ));
+            },
+    );
+  }
 }
 
 class _SectionHeader extends StatelessWidget {

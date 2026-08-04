@@ -98,6 +98,53 @@ final filterFacetsProvider = FutureProvider.autoDispose<FilterFacets>((ref) {
   return ref.watch(collectionRepositoryProvider).getFilterFacets();
 });
 
+// ── 참조 데이터(Works) 동기화 ───────────────────────────────────────────────────
+/// 진행 상태를 화면(설정)이 구독한다. 앱 시작 자동 동기화와 수동 버튼이 같은
+/// 노티파이어를 쓰므로 둘이 동시에 돌지 않는다(_running 가드).
+///
+/// 실패해도 앱은 그대로 쓸 수 있다 — 참조 데이터가 없으면 등록 폼이 자동완성 없이
+/// 기존처럼 자유 텍스트로 동작할 뿐이다.
+class WorksSyncNotifier extends AsyncNotifier<int> {
+  bool _running = false;
+
+  /// build는 로컬 보유 건수만 읽는다(네트워크 없음).
+  @override
+  Future<int> build() =>
+      ref.watch(collectionRepositoryProvider).localWorksCount();
+
+  /// 로컬이 비어 있을 때만 받는다. 앱 시작 경로용.
+  Future<void> syncIfEmpty() async {
+    final count = await ref.read(collectionRepositoryProvider).localWorksCount();
+    if (count > 0) {
+      debugPrint('[WORKS] 로컬 $count건 보유 — 앱 시작 동기화 생략');
+      return;
+    }
+    await sync();
+  }
+
+  /// 강제 재동기화. 설정 화면의 "작품 데이터 새로고침".
+  Future<void> sync() async {
+    if (_running) {
+      debugPrint('[WORKS] 이미 동기화 중 — 스킵');
+      return;
+    }
+    _running = true;
+    state = const AsyncValue.loading();
+    try {
+      final r = await ref.read(collectionRepositoryProvider).syncWorksFromRemote();
+      state = AsyncValue.data(r.works);
+    } catch (e, st) {
+      debugPrint('[WORKS] 동기화 실패: $e');
+      state = AsyncValue.error(e, st);
+    } finally {
+      _running = false;
+    }
+  }
+}
+
+final worksSyncProvider =
+    AsyncNotifierProvider<WorksSyncNotifier, int>(WorksSyncNotifier.new);
+
 // ── 앨범 단건 (상세) ────────────────────────────────────────────────────────────
 /// 상세 화면 — 앨범 애그리게이트 단건.
 /// write가 albums를 touch하면 목록(watch)은 자동 갱신되나, 상세는 진입 시

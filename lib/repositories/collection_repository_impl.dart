@@ -554,6 +554,82 @@ class CollectionRepositoryImpl implements CollectionRepository {
     return (composers: composers, conductors: conductors);
   }
 
+  // ===========================================================================
+  // 참조 데이터(Works) — 원격 → 로컬 벌크 미러링
+  //   §3-6상 캐시라 sync_queue를 타지 않는다(사용자가 고치는 데이터가 아니라
+  //   올릴 로컬 변경이 없다). 통째로 받아 upsert하면 끝이고, 실패해도 다음
+  //   기동/수동 버튼에서 다시 받으면 된다.
+  // ===========================================================================
+
+  /// PostgREST 한 번에 받을 행 수. 서버 기본 상한이 1000이라 그보다 크게 잡아도
+  /// 소용없다 — 상한을 넘겨 요청하면 조용히 잘린 결과가 온다(24,760건을 한 번에
+  /// 요청하면 1000건만 오고 성공처럼 보인다). 반드시 range로 나눠 받는다.
+  static const _worksPageSize = 1000;
+
+  @override
+  Future<int> localWorksCount() async {
+    final q = _db.selectOnly(_db.works)..addColumns([_db.works.id.count()]);
+    return (await q.getSingle()).read(_db.works.id.count()) ?? 0;
+  }
+
+  @override
+  Future<WorksSyncResult> syncWorksFromRemote() async {
+    final workRows = await _fetchAllPaged('works',
+        'id,composer,title,catalog_number,musical_key,genre,period,'
+        'popular,recommended,source');
+    final aliasRows =
+        await _fetchAllPaged('work_aliases', 'id,work_id,composer_key,alias,language');
+
+    await _db.batch((b) {
+      b.insertAllOnConflictUpdate(
+        _db.works,
+        workRows.map((r) => WorksCompanion(
+              id: Value(r['id'] as String),
+              composer: Value(r['composer'] as String),
+              title: Value(r['title'] as String),
+              catalogNumber: Value(r['catalog_number'] as String?),
+              musicalKey: Value(r['musical_key'] as String?),
+              genre: Value(r['genre'] as String?),
+              period: Value(r['period'] as String?),
+              popular: Value((r['popular'] as bool?) ?? false),
+              recommended: Value((r['recommended'] as bool?) ?? false),
+              source: Value((r['source'] as String?) ?? 'openopus'),
+            )),
+      );
+      b.insertAllOnConflictUpdate(
+        _db.workAliases,
+        aliasRows.map((r) => WorkAliasesCompanion(
+              id: Value(r['id'] as String),
+              workId: Value(r['work_id'] as String?),
+              composerKey: Value(r['composer_key'] as String?),
+              alias: Value(r['alias'] as String),
+              language: Value(r['language'] as String?),
+            )),
+      );
+    });
+
+    debugPrint('[WORKS] 동기화 완료 — works ${workRows.length}건 / '
+        'aliases ${aliasRows.length}건');
+    return (works: workRows.length, aliases: aliasRows.length);
+  }
+
+  /// range로 끝까지 긁어온다. 마지막 페이지는 요청 크기보다 작게 온다.
+  Future<List<Map<String, dynamic>>> _fetchAllPaged(
+      String table, String columns) async {
+    final out = <Map<String, dynamic>>[];
+    var from = 0;
+    while (true) {
+      final page = await _supabase
+          .from(table)
+          .select(columns)
+          .range(from, from + _worksPageSize - 1);
+      out.addAll(page.map((r) => Map<String, dynamic>.from(r)));
+      if (page.length < _worksPageSize) break;
+      from += _worksPageSize;
+    }
+    return out;
+  }
+
   @override
   Stream<List<AlbumSummary>> watchAlbumSummaries(AlbumFilter filter) {
     // albums 테이블 변경에 반응. write 경로는 저장 시 트랜잭션에 albums upsert
