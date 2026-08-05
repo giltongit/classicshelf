@@ -28,8 +28,10 @@ import 'package:uuid/uuid.dart';
 import '../models/album.dart';
 import '../models/work.dart';
 import '../providers/providers.dart';
+import '../services/wish_resolution.dart';
 import '../theme/app_theme.dart';
 import '../widgets/form_fields.dart';
+import '../widgets/wish_resolution_dialog.dart';
 
 const _uuid = Uuid();
 
@@ -278,16 +280,40 @@ class _AddAlbumScreenState extends ConsumerState<AddAlbumScreen> {
       // 상세는 FutureProvider.family(진입 시 1회 조회)라 직접 무효화해야
       // 수정 결과가 보인다.
       if (_isEditing) ref.invalidate(albumDetailProvider(_albumId));
+
+      // 위시 자동 해소 감지(§17-21). 폼을 닫기 전에 물어본다 — pop 후에는
+      // 이 화면의 context가 사라져 다이얼로그를 띄울 자리가 없다.
+      final resolved = await _checkWishResolution(album);
+      if (!mounted) return;
+
       navigator.pop();
       final dropped =
           droppedPartial > 0 ? ' (작곡가 없는 수록곡 $droppedPartial개 제외)' : '';
+      final wish = resolved > 0 ? ' · 희망 $resolved건 해소' : '';
       messenger.showSnackBar(SnackBar(
-        content: Text('「$title」 ${_isEditing ? '수정' : '등록'}됨$dropped'),
+        content: Text('「$title」 ${_isEditing ? '수정' : '등록'}됨$dropped$wish'),
       ));
     } catch (e) {
       if (!mounted) return;
       setState(() => _saving = false);
       messenger.showSnackBar(SnackBar(content: Text('저장 실패: $e')));
+    }
+  }
+
+  /// 방금 저장한 앨범 하나만 활성 위시 전체와 대조한다(§17-21 트리거 ①).
+  /// 저장은 이미 끝났으므로 여기서 실패해도 저장 결과를 되돌리지 않는다 —
+  /// 감지는 부가 기능이라 조용히 넘긴다.
+  Future<int> _checkWishResolution(Album album) async {
+    // 처분한 앨범은 소장이 아니다 — 위시가 여전히 유효하다.
+    if (album.disposedAt != null) return 0;
+    try {
+      final wishes = await ref.read(collectionRepositoryProvider).getWishlist();
+      final matches = findResolvedWishes(wishes, compositionKeysOf(album));
+      if (!mounted) return 0;
+      return await promptWishResolution(context, ref, matches);
+    } catch (e) {
+      debugPrint('[WISH] 자동 해소 감지 실패(무시): $e');
+      return 0;
     }
   }
 

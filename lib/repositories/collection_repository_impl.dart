@@ -882,6 +882,30 @@ class CollectionRepositoryImpl implements CollectionRepository {
   Stream<List<WishItem>> watchWishlist() =>
       _wishlistQuery().watch().map((rows) => rows.map(_wishFromRow).toList());
 
+  @override
+  Future<List<CompositionKey>> getCompositionMatchKeys() async {
+    // getAlbumSummaries와 같은 방식: 조인 대신 두 번 select 후 메모리에서 잇는다.
+    final albums = await (_db.select(_db.albums)
+          ..where((t) => t.disposedAt.isNull()))
+        .get();
+    if (albums.isEmpty) return const [];
+
+    final titleById = {for (final a in albums) a.id: a.title};
+    final comps = await (_db.select(_db.compositions)
+          ..where((t) => t.albumId.isIn(titleById.keys.toList())))
+        .get();
+
+    return comps
+        .map((c) => (
+              albumId: c.albumId,
+              albumTitle: titleById[c.albumId] ?? '',
+              workId: c.workId,
+              composer: c.composer,
+              title: c.title,
+            ))
+        .toList();
+  }
+
   // ===========================================================================
   // flush / 원격 동기화 — (A) 범위 밖. 다음 단계에서 구현.
   // ===========================================================================

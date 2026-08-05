@@ -50,6 +50,17 @@ typedef FilterFacets = ({
   List<String> periods,
 });
 
+/// 위시 자동 해소 감지(§17-21)가 대조하는 "소장 중인 수록곡" 한 줄.
+/// 앨범 애그리게이트를 앨범 수만큼 조립하지 않으려고 평면 뷰로 뽑는다 —
+/// 매칭에 필요한 건 workId·composer·title 셋과, 사용자에게 보여줄 앨범 제목뿐이다.
+typedef CompositionKey = ({
+  String albumId,
+  String albumTitle,
+  String? workId,
+  String composer,
+  String? title,
+});
+
 /// 저장된 애그리게이트 반환값. book처럼 서버 id를 되돌려줄 필요가 없어
 /// 도메인 Album을 그대로 반환한다(로컬=원격 동일 id).
 abstract interface class CollectionRepository {
@@ -92,6 +103,12 @@ abstract interface class CollectionRepository {
 
   /// 반응형 희망 목록 — watchAlbumSummaries와 같은 Drift .watch() 패턴.
   Stream<List<WishItem>> watchWishlist();
+
+  /// 소장 중(disposed_at is null)인 앨범의 모든 수록곡을 매칭 키로 평면 조회.
+  /// 위시 "지금 확인"(백필)이 쓴다 — 이 기능이 생기기 전에 등록한 앨범은
+  /// 저장 직후 감지를 거친 적이 없으므로 한 번은 전량 대조가 필요하다.
+  /// 처분한 앨범은 뺀다: 더는 소장하지 않으니 위시가 여전히 유효하다.
+  Future<List<CompositionKey>> getCompositionMatchKeys();
 
   // ── 쓰기 (애그리게이트 단위) ──────────────────────────────────────────────
   /// 앨범 애그리게이트를 통째로 저장(신규/수정 공용).

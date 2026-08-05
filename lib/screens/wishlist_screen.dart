@@ -14,8 +14,9 @@
 //   같은 작곡가→작품 2단 자동완성(widgets/form_fields.dart)으로 work_id를 채운다.
 //   고르지 않으면 workId는 null 그대로 — 자유 텍스트 위시도 계속 유효하다.
 //
-// 이번 범위 밖(§17 부채):
-//   · 자동 해소 — 앨범을 등록할 때 매칭되는 위시를 감지해 지우는 로직.
+// 자동 해소 감지(§17-21, 해소): 앱바 "지금 확인"이 서가 전체와 대조한다(트리거 ②).
+//   판정은 services/wish_resolution.dart, 확인·삭제는 widgets/wish_resolution_dialog.
+//   앨범 저장 직후의 트리거 ①은 add_book_screen에 있다.
 // =============================================================================
 
 import 'package:flutter/material.dart';
@@ -25,8 +26,10 @@ import 'package:uuid/uuid.dart';
 import '../models/wishlist_entry.dart';
 import '../models/work.dart';
 import '../providers/providers.dart';
+import '../services/wish_resolution.dart';
 import '../theme/app_theme.dart';
 import '../widgets/form_fields.dart';
+import '../widgets/wish_resolution_dialog.dart';
 
 const _uuid = Uuid();
 
@@ -41,6 +44,11 @@ class WishlistScreen extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('희망 목록'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.fact_check_outlined),
+            tooltip: '소장 여부 지금 확인',
+            onPressed: () => _runBackfillCheck(context, ref),
+          ),
           IconButton(
             icon: const Icon(Icons.add),
             tooltip: '희망 항목 추가',
@@ -289,6 +297,36 @@ Future<void> _delete(
     messenger.showSnackBar(const SnackBar(content: Text('삭제했습니다')));
   } catch (e) {
     messenger.showSnackBar(SnackBar(content: Text('삭제 실패: $e')));
+  }
+}
+
+// ── 백필 확인 ──────────────────────────────────────────────────────────────────
+// 자동 해소 감지 트리거 ②(§17-21). 앨범 저장 직후 감지는 그 앨범 하나만 보므로,
+// 이 기능이 생기기 전부터 서가에 있던 음반은 한 번도 대조된 적이 없다.
+// 사용자가 눌렀을 때만 전량 대조한다 — 진입할 때마다 자동으로 돌리면
+// 위시 화면을 열 때마다 다이얼로그가 튀어나온다.
+
+Future<void> _runBackfillCheck(BuildContext context, WidgetRef ref) async {
+  final messenger = ScaffoldMessenger.of(context);
+  final repo = ref.read(collectionRepositoryProvider);
+  try {
+    final wishes = await repo.getWishlist();
+    final keys = await repo.getCompositionMatchKeys();
+    final matches = findResolvedWishes(wishes, keys);
+    if (!context.mounted) return;
+
+    if (matches.isEmpty) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('서가와 일치하는 희망 항목이 없습니다')),
+      );
+      return;
+    }
+    final removed = await promptWishResolution(context, ref, matches);
+    messenger.showSnackBar(SnackBar(
+      content: Text(removed > 0 ? '희망 $removed건을 제거했습니다' : '그대로 두었습니다'),
+    ));
+  } catch (e) {
+    messenger.showSnackBar(SnackBar(content: Text('확인 실패: $e')));
   }
 }
 
