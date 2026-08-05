@@ -63,6 +63,28 @@ class _AddAlbumScreenState extends ConsumerState<AddAlbumScreen> {
   // 신규는 빈 카드 하나로 시작한다(편집은 pre-fill이 채운다).
   final List<_CompositionCard> _compositions = [];
 
+  /// 이 개수부터는 카드가 아니라 표로 보여준다(§4-3).
+  /// 전집·박스세트를 넣기 시작하면 카드가 화면을 끝없이 밀어내서, 한 곡을
+  /// 고치려고 스크롤만 한참 하게 된다.
+  static const int _tableViewThreshold = 6;
+
+  /// 사용자가 뷰를 직접 고르면 그 선택이 이긴다. null이면 개수에 따라 자동.
+  bool? _tableViewOverride;
+
+  bool get _useTableView =>
+      _tableViewOverride ?? (_compositions.length >= _tableViewThreshold);
+
+  /// 표에서 행을 탭하면 카드 폼을 바텀시트로 띄운다. 시트는 별도 route라
+  /// 화면의 setState가 시트 안을 다시 그리지 않는다 — 폼을 건드릴 때마다
+  /// 이 값을 올려서 시트가 ValueListenableBuilder로 따라 그리게 한다.
+  final ValueNotifier<int> _formTick = ValueNotifier<int>(0);
+
+  /// 폼 상태 변경 공통 진입점. setState + 시트 갱신을 함께 처리한다.
+  void _mutate(VoidCallback fn) {
+    setState(fn);
+    _formTick.value++;
+  }
+
   // ── Step 4. 사용자 정보 ──
   DateTime? _acquiredAt;
   final _location = TextEditingController();
@@ -157,6 +179,7 @@ class _AddAlbumScreenState extends ConsumerState<AddAlbumScreen> {
     for (final c in _compositions) {
       c.dispose();
     }
+    _formTick.dispose();
     super.dispose();
   }
 
@@ -468,27 +491,59 @@ class _AddAlbumScreenState extends ConsumerState<AddAlbumScreen> {
             const SizedBox(height: 20),
 
             // ── Step 3 ──
-            _SectionLabel('수록곡 ${_compositions.length}곡'),
+            Row(
+              children: [
+                _SectionLabel('수록곡 ${_compositions.length}곡'),
+                const Spacer(),
+                // 표 ↔ 카드 수동 전환. 자동 전환(6곡+)을 언제든 뒤집을 수 있게
+                // 둔다 — 곡이 적어도 표로 훑고 싶은 경우가 있다.
+                IconButton(
+                  icon: Icon(
+                    _useTableView ? Icons.view_agenda_outlined : Icons.table_rows,
+                    size: 20,
+                    color: AppColors.muted,
+                  ),
+                  tooltip: _useTableView ? '카드로 보기' : '표로 보기',
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () =>
+                      setState(() => _tableViewOverride = !_useTableView),
+                ),
+              ],
+            ),
             const SizedBox(height: 4),
             const Text(
               '작곡가와 작품번호로 충분합니다. 악장은 나중에 추가할 수 있습니다.',
               style: TextStyle(color: AppColors.muted, fontSize: 12),
             ),
             const SizedBox(height: 12),
-            // TODO: 2B-2b-③ — 6곡 이상이면 표 전환 (§4-3)
-            // TODO: 2B-2b-③ — 세트(전집) 일괄 추가
             // TODO: 2B-2b-③ — 곡별 연주자 override(상속 예외)
-            // TODO: Work 매칭·자동완성은 대 2
-            ...List.generate(
-              _compositions.length,
-              (i) => _buildCompositionCard(i),
-            ),
-            const SizedBox(height: 4),
-            _AddButton(
-              label: '작품 추가',
-              onPressed: () => setState(
-                () => _compositions.add(_CompositionCard()),
+            if (_useTableView)
+              _buildCompositionTable()
+            else
+              ...List.generate(
+                _compositions.length,
+                (i) => _buildCompositionCard(i),
               ),
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                Expanded(
+                  child: _AddButton(
+                    label: '작품 추가',
+                    onPressed: () => _mutate(
+                      () => _compositions.add(_CompositionCard()),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _AddButton(
+                    label: '일괄 추가',
+                    icon: Icons.playlist_add,
+                    onPressed: _openBulkAddSheet,
+                  ),
+                ),
+              ],
             ),
 
             const SizedBox(height: 28),
@@ -591,7 +646,10 @@ class _AddAlbumScreenState extends ConsumerState<AddAlbumScreen> {
   }
 
   // ── Step 3 카드 ──
-  Widget _buildCompositionCard(int index) {
+  /// [inSheet]면 표에서 행을 탭해 시트로 띄운 상태다 — 카드 자체 삭제 버튼을
+  /// 감춘다. 시트가 인덱스로 카드를 가리키고 있어서, 여기서 지우면 시트가
+  /// 엉뚱한 카드를 보게 된다. 삭제는 표 행 쪽 버튼으로 한다.
+  Widget _buildCompositionCard(int index, {bool inSheet = false}) {
     final card = _compositions[index];
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -615,13 +673,13 @@ class _AddAlbumScreenState extends ConsumerState<AddAlbumScreen> {
               ),
               const Spacer(),
               // 카드가 하나뿐이면 지우지 않고 비워 두면 된다(저장 시 무시).
-              if (_compositions.length > 1)
+              if (!inSheet && _compositions.length > 1)
                 IconButton(
                   icon: const Icon(Icons.close,
                       size: 18, color: AppColors.muted),
                   tooltip: '이 작품 삭제',
                   visualDensity: VisualDensity.compact,
-                  onPressed: () => setState(() {
+                  onPressed: () => _mutate(() {
                     _compositions.removeAt(index);
                     card.dispose();
                   }),
@@ -640,12 +698,12 @@ class _AddAlbumScreenState extends ConsumerState<AddAlbumScreen> {
             optionBuilder: (s) => Text(s,
                 style: const TextStyle(
                     color: AppColors.cream, fontSize: 14)),
-            onSelected: (_) => setState(() {
+            onSelected: (_) => _mutate(() {
               // 작곡가가 바뀌면 이전 매칭은 더는 유효하지 않다.
               card.workId = null;
               card.matchedTitle = null;
             }),
-            onChanged: (_) => setState(() {
+            onChanged: (_) => _mutate(() {
               card.workId = null;
               card.matchedTitle = null;
             }),
@@ -676,11 +734,11 @@ class _AddAlbumScreenState extends ConsumerState<AddAlbumScreen> {
                   ),
               ],
             ),
-            onSelected: (w) => setState(() {
+            onSelected: (w) => _mutate(() {
               card.workId = w.id;
               card.matchedTitle = w.title;
             }),
-            onChanged: (v) => setState(() {
+            onChanged: (v) => _mutate(() {
               // 고른 뒤 제목을 손으로 고치면 참조와 표기가 어긋난다 — 매칭 해제.
               if (card.matchedTitle != null && v != card.matchedTitle) {
                 card.workId = null;
@@ -759,7 +817,7 @@ class _AddAlbumScreenState extends ConsumerState<AddAlbumScreen> {
       return Align(
         alignment: Alignment.centerLeft,
         child: TextButton.icon(
-          onPressed: () => setState(() {
+          onPressed: () => _mutate(() {
             card.overridesExpanded = true;
             if (card.overrides.isEmpty) card.overrides.add(_PerformerRow());
           }),
@@ -795,7 +853,7 @@ class _AddAlbumScreenState extends ConsumerState<AddAlbumScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           InkWell(
-            onTap: () => setState(() => card.overridesExpanded = false),
+            onTap: () => _mutate(() => card.overridesExpanded = false),
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 4),
               child: Row(
@@ -841,7 +899,7 @@ class _AddAlbumScreenState extends ConsumerState<AddAlbumScreen> {
             ),
           ...card.overrides.map((row) => _buildPerformerRow(
                 row,
-                onDelete: () => setState(() {
+                onDelete: () => _mutate(() {
                   card.overrides.remove(row);
                   row.dispose();
                   // 마지막 행을 지우면 접어서 "상속" 상태로 되돌린다.
@@ -850,7 +908,7 @@ class _AddAlbumScreenState extends ConsumerState<AddAlbumScreen> {
               )),
           TextButton.icon(
             onPressed: () =>
-                setState(() => card.overrides.add(_PerformerRow())),
+                _mutate(() => card.overrides.add(_PerformerRow())),
             icon: const Icon(Icons.add, size: 16),
             label: const Text('연주자 추가', style: TextStyle(fontSize: 13)),
             style: TextButton.styleFrom(
@@ -874,7 +932,7 @@ class _AddAlbumScreenState extends ConsumerState<AddAlbumScreen> {
       return Align(
         alignment: Alignment.centerLeft,
         child: TextButton.icon(
-          onPressed: () => setState(() {
+          onPressed: () => _mutate(() {
             card.movementsExpanded = true;
             if (card.movements.isEmpty) card.movements.add(_MovementRow());
           }),
@@ -904,7 +962,7 @@ class _AddAlbumScreenState extends ConsumerState<AddAlbumScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           InkWell(
-            onTap: () => setState(() => card.movementsExpanded = false),
+            onTap: () => _mutate(() => card.movementsExpanded = false),
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 4),
               child: Row(
@@ -935,7 +993,7 @@ class _AddAlbumScreenState extends ConsumerState<AddAlbumScreen> {
           ),
           TextButton.icon(
             onPressed: () =>
-                setState(() => card.movements.add(_MovementRow())),
+                _mutate(() => card.movements.add(_MovementRow())),
             icon: const Icon(Icons.add, size: 16),
             label: const Text('악장 추가', style: TextStyle(fontSize: 13)),
             style: TextButton.styleFrom(
@@ -949,6 +1007,267 @@ class _AddAlbumScreenState extends ConsumerState<AddAlbumScreen> {
     );
   }
 
+  // ── Step 3 · 세트 일괄 추가 (§4-3) ────────────────────────────────────────
+  // 전집 뒷면 트랙리스트를 그대로 옮겨 적을 수 있게 한다. 만들어진 카드는
+  // 이후 완전히 일반 카드다 — 저장 경로도 편집 흐름도 새로 만들지 않는다.
+
+  void _openBulkAddSheet() {
+    showModalBottomSheet<_BulkAddResult>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (_) => const _BulkAddSheet(),
+    ).then((result) {
+      if (result != null && mounted) _applyBulkAdd(result);
+    });
+  }
+
+  void _applyBulkAdd(_BulkAddResult result) {
+    final parsed = parseBulkCompositionLines(result.text);
+    final messenger = ScaffoldMessenger.of(context);
+    if (parsed.isEmpty) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('추가할 줄이 없습니다')),
+      );
+      return;
+    }
+
+    final disc = result.disc.trim();
+    var track = int.tryParse(result.startTrack.trim());
+
+    final created = <_CompositionCard>[];
+    for (final line in parsed) {
+      final card = _CompositionCard()
+        ..composer.text = line.composer
+        ..title.text = line.title;
+      if (disc.isNotEmpty) card.discNo.text = disc;
+      if (track != null) {
+        // 트랙은 붙여넣은 순서대로 하나씩 올린다. 끝 트랙은 비워 둔다 —
+        // 한 줄 = 한 곡이라 시작 트랙만으로 충분하고, 범위가 필요하면
+        // 나중에 개별 카드에서 채우면 된다.
+        card.trackFrom.text = track.toString();
+        track++;
+      }
+      created.add(card);
+    }
+
+    _mutate(() {
+      // 신규 폼의 빈 카드 하나가 그대로 남아 있으면 그 자리를 대신한다 —
+      // 붙여넣기 결과 위에 빈 카드가 얹혀 있으면 지저분하다.
+      if (_compositions.length == 1 && _compositions.first.isBlank) {
+        _compositions.removeAt(0).dispose();
+      }
+      _compositions.addAll(created);
+    });
+
+    // 대량 생성은 되돌리기 어려우니 몇 개가 들어갔는지 분명히 알린다.
+    messenger.showSnackBar(SnackBar(
+      content: Text('수록곡 ${created.length}곡 추가 '
+          '(총 ${_compositions.length}곡)'),
+    ));
+  }
+
+  // ── Step 3 · 표 뷰 (§4-3) ─────────────────────────────────────────────────
+  // 표는 "보기 + 빠른 확인" 레이어다. 악장·곡별 연주자까지 손대려면 행을 탭해
+  // 기존 카드 폼을 그대로 띄운다 — 상세 편집 UI를 따로 만들지 않는다.
+
+  Widget _buildCompositionTable() {
+    if (_compositions.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 16),
+        child: Text(
+          '아직 수록곡이 없습니다.',
+          style: TextStyle(color: AppColors.muted, fontSize: 13),
+        ),
+      );
+    }
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.dim),
+      ),
+      child: Column(
+        children: [
+          const _TableHeaderRow(),
+          ...List.generate(
+            _compositions.length,
+            (i) => _buildCompositionTableRow(i),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCompositionTableRow(int index) {
+    final card = _compositions[index];
+    final composer = card.composer.text.trim();
+    final title = card.title.text.trim();
+    final catalog = card.catalogNumber.text.trim();
+    final disc = card.discNo.text.trim();
+    final from = card.trackFrom.text.trim();
+    final to = card.trackTo.text.trim();
+
+    // 디스크/트랙을 한 칸에 모은다 — "1 · 3-5" 식. 없는 건 조용히 빠진다.
+    final track = [
+      if (from.isNotEmpty || to.isNotEmpty)
+        [from, to].where((s) => s.isNotEmpty).join('-'),
+    ].join();
+    final discTrack = [
+      if (disc.isNotEmpty) 'D$disc',
+      if (track.isNotEmpty) track,
+    ].join(' · ');
+
+    // 악장·override가 달려 있으면 표에서도 보이게 점을 찍는다. 표에 그 내용을
+    // 펼치지는 않지만, 있는 줄 모르고 지우는 일은 막아야 한다.
+    final extras = [
+      if (card.movements.isNotEmpty) '악장 ${card.movements.length}',
+      if (card.overrides.isNotEmpty) '연주자 ${card.overrides.length}',
+    ].join(' · ');
+
+    return InkWell(
+      onTap: () => _openCompositionSheet(index),
+      child: Container(
+        decoration: const BoxDecoration(
+          border: Border(top: BorderSide(color: AppColors.dim)),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: 20,
+              child: Text(
+                '${index + 1}',
+                style: const TextStyle(color: AppColors.muted, fontSize: 12),
+              ),
+            ),
+            Expanded(
+              flex: 3,
+              child: Text(
+                composer.isEmpty ? '—' : composer,
+                style: TextStyle(
+                  color: composer.isEmpty ? AppColors.dim : AppColors.cream,
+                  fontSize: 12,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(width: 6),
+            Expanded(
+              flex: 4,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title.isEmpty ? '—' : title,
+                    style: TextStyle(
+                      color: title.isEmpty ? AppColors.dim : AppColors.cream,
+                      fontSize: 12,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  if (catalog.isNotEmpty || extras.isNotEmpty)
+                    Text(
+                      [catalog, extras].where((s) => s.isNotEmpty).join(' · '),
+                      style: const TextStyle(
+                          color: AppColors.muted, fontSize: 10),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 6),
+            SizedBox(
+              width: 56,
+              child: Text(
+                discTrack.isEmpty ? '—' : discTrack,
+                style: TextStyle(
+                  color: discTrack.isEmpty ? AppColors.dim : AppColors.muted,
+                  fontSize: 11,
+                ),
+              ),
+            ),
+            _RowIconButton(
+              icon: Icons.close,
+              tooltip: '이 작품 삭제',
+              onPressed: () => _mutate(() {
+                _compositions.removeAt(index);
+                card.dispose();
+              }),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 표에서 행을 탭했을 때 — 카드 폼을 그대로 시트에 얹는다.
+  /// 시트가 열린 사이에도 폼 상태는 화면 쪽 _compositions가 진짜다.
+  /// _formTick으로 화면 setState를 시트까지 전파한다(필드 주석 참조).
+  void _openCompositionSheet(int index) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (sheetContext) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.85,
+        minChildSize: 0.5,
+        maxChildSize: 0.95,
+        builder: (context, scrollController) => ValueListenableBuilder<int>(
+          valueListenable: _formTick,
+          builder: (context, _, _) {
+            // 시트가 열린 사이 표에서 이 카드가 사라졌을 수 있다.
+            if (index >= _compositions.length) return const SizedBox.shrink();
+            return ListView(
+              controller: scrollController,
+              padding: EdgeInsets.only(
+                left: 16,
+                right: 16,
+                top: 16,
+                bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+              ),
+              children: [
+                Row(
+                  children: [
+                    Text(
+                      '${index + 1}번 수록곡',
+                      style: const TextStyle(
+                        color: AppColors.cream,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const Spacer(),
+                    TextButton(
+                      onPressed: () => Navigator.pop(sheetContext),
+                      child: const Text('닫기',
+                          style: TextStyle(color: AppColors.gold)),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                // 삭제는 표 행 쪽에 있다 — 시트에서 지우면 시트가 가리키는
+                // 인덱스가 어긋나므로 여기서는 감춘다.
+                _buildCompositionCard(index, inSheet: true),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+
   /// 악장을 인접 항목과 맞바꾼다(§17-12).
   /// 별도 정렬 필드를 두지 않는다 — 저장이 리스트 순서를 그대로 seq로 굽고
   /// (`seq: movements.length`), 조회·pre-fill이 seq로 정렬해 되돌린다.
@@ -956,7 +1275,7 @@ class _AddAlbumScreenState extends ConsumerState<AddAlbumScreen> {
   void _moveMovement(_CompositionCard card, int index, int delta) {
     final target = index + delta;
     if (target < 0 || target >= card.movements.length) return;
-    setState(() {
+    _mutate(() {
       final row = card.movements.removeAt(index);
       card.movements.insert(target, row);
     });
@@ -999,7 +1318,7 @@ class _AddAlbumScreenState extends ConsumerState<AddAlbumScreen> {
               _RowIconButton(
                 icon: Icons.close,
                 tooltip: '이 악장 삭제',
-                onPressed: () => setState(() {
+                onPressed: () => _mutate(() {
                   card.movements.removeAt(index);
                   row.dispose();
                   // 마지막 악장을 지우면 섹션을 접어 카드를 정리한다.
@@ -1031,6 +1350,183 @@ class _AddAlbumScreenState extends ConsumerState<AddAlbumScreen> {
               ],
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 세트 일괄 추가 (§4-3)
+// ─────────────────────────────────────────────────────────────────────────────
+
+typedef BulkCompositionLine = ({String composer, String title});
+
+/// 한 줄에 한 곡, `작곡가 | 제목`. 뒷면 트랙리스트를 옮겨 적기 좋은 최소 포맷.
+///
+/// 관대하게 읽는다 — 빈 줄은 건너뛰고, `|`가 없는 줄은 **버리지 않고** 제목만
+/// 채운 줄로 만든다(작곡가는 빈칸). 폼 어디서도 작곡가를 입력 단계에서 강제하지
+/// 않으므로(저장 때 한 번만 걸러낸다) 여기서만 엄격할 이유가 없다.
+/// 구분자가 여러 개면 첫 번째만 자른다 — 제목에 `|`가 들어가도 살아남는다.
+List<BulkCompositionLine> parseBulkCompositionLines(String raw) {
+  final out = <BulkCompositionLine>[];
+  for (final rawLine in raw.split('\n')) {
+    final line = rawLine.trim();
+    if (line.isEmpty) continue;
+    final sep = line.indexOf('|');
+    if (sep < 0) {
+      out.add((composer: '', title: line));
+    } else {
+      out.add((
+        composer: line.substring(0, sep).trim(),
+        title: line.substring(sep + 1).trim(),
+      ));
+    }
+  }
+  return out;
+}
+
+typedef _BulkAddResult = ({String text, String disc, String startTrack});
+
+class _BulkAddSheet extends StatefulWidget {
+  const _BulkAddSheet();
+
+  @override
+  State<_BulkAddSheet> createState() => _BulkAddSheetState();
+}
+
+class _BulkAddSheetState extends State<_BulkAddSheet> {
+  final _text = TextEditingController();
+  final _disc = TextEditingController();
+  final _startTrack = TextEditingController(text: '1');
+
+  @override
+  void dispose() {
+    _text.dispose();
+    _disc.dispose();
+    _startTrack.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // 미리보기 개수 — 붙여넣고 나서 몇 곡이 생기는지 누르기 전에 보여준다.
+    final count = parseBulkCompositionLines(_text.text).length;
+    return Padding(
+      padding: EdgeInsets.only(
+        left: 20,
+        right: 20,
+        top: 20,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            '세트 일괄 추가',
+            style: TextStyle(
+              color: AppColors.cream,
+              fontSize: 17,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            '한 줄에 한 곡씩. 작곡가와 제목은 | 로 나눕니다.\n'
+            '| 가 없으면 제목만 채운 카드가 됩니다.',
+            style: TextStyle(color: AppColors.muted, fontSize: 12),
+          ),
+          const SizedBox(height: 12),
+          AppTextField(
+            controller: _text,
+            hint: 'Bach | Cello Suite No.1\nBach | Cello Suite No.2',
+            maxLines: 8,
+            onChanged: (_) => setState(() {}),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: AppTextField(
+                  controller: _disc,
+                  label: '디스크',
+                  numeric: true,
+                  maxLength: 2,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: AppTextField(
+                  controller: _startTrack,
+                  label: '시작 트랙',
+                  numeric: true,
+                  maxLength: 3,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            '트랙 번호는 붙여넣은 순서대로 1씩 올라갑니다. 비워 두면 넣지 않습니다.',
+            style: TextStyle(color: AppColors.dim, fontSize: 11),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child:
+                    const Text('취소', style: TextStyle(color: AppColors.muted)),
+              ),
+              const SizedBox(width: 8),
+              FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.gold,
+                  foregroundColor: AppColors.bg,
+                ),
+                onPressed: count == 0
+                    ? null
+                    : () => Navigator.pop<_BulkAddResult>(context, (
+                          text: _text.text,
+                          disc: _disc.text,
+                          startTrack: _startTrack.text,
+                        )),
+                child: Text(count == 0 ? '추가' : '$count곡 추가'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 표 뷰 머리글. 본문 행(_buildCompositionTableRow)과 폭이 맞아야 한다.
+class _TableHeaderRow extends StatelessWidget {
+  const _TableHeaderRow();
+
+  static const _style = TextStyle(
+    color: AppColors.gold,
+    fontSize: 11,
+    fontWeight: FontWeight.w600,
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      child: Row(
+        children: [
+          const SizedBox(width: 20),
+          const Expanded(flex: 3, child: Text('작곡가', style: _style)),
+          const SizedBox(width: 6),
+          const Expanded(flex: 4, child: Text('작품', style: _style)),
+          const SizedBox(width: 6),
+          const SizedBox(width: 56, child: Text('디스크·트랙', style: _style)),
+          // 삭제 아이콘 자리(_RowIconButton 폭과 맞춘다).
+          const SizedBox(width: 28),
         ],
       ),
     );
@@ -1306,15 +1802,20 @@ class _DateField extends StatelessWidget {
 class _AddButton extends StatelessWidget {
   final String label;
   final VoidCallback onPressed;
+  final IconData icon;
 
-  const _AddButton({required this.label, required this.onPressed});
+  const _AddButton({
+    required this.label,
+    required this.onPressed,
+    this.icon = Icons.add,
+  });
 
   @override
   Widget build(BuildContext context) {
     return OutlinedButton.icon(
       onPressed: onPressed,
-      icon: const Icon(Icons.add, size: 18),
-      label: Text(label),
+      icon: Icon(icon, size: 18),
+      label: Text(label, overflow: TextOverflow.ellipsis),
       style: OutlinedButton.styleFrom(
         foregroundColor: AppColors.gold,
         side: BorderSide(color: AppColors.gold.withValues(alpha: 0.5)),

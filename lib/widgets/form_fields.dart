@@ -146,7 +146,12 @@ class AppTextField extends StatelessWidget {
       maxLength: maxLength,
       textInputAction: textInputAction,
       onChanged: onChanged,
-      keyboardType: numeric ? TextInputType.number : TextInputType.text,
+      // 여러 줄 필드는 multiline으로 알려야 IME가 엔터를 "줄바꿈"으로 준다.
+      // text로 두면 삼성 키보드 기준 엔터가 "완료"가 되어 줄을 못 바꾸고
+      // 포커스만 빠진다 — 세트 일괄 추가(§4-3)처럼 줄 단위 입력이 막힌다.
+      keyboardType: numeric
+          ? TextInputType.number
+          : (maxLines > 1 ? TextInputType.multiline : TextInputType.text),
       inputFormatters:
           numeric ? [FilteringTextInputFormatter.digitsOnly] : null,
       style: const TextStyle(color: AppColors.cream, fontSize: 14),
