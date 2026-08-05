@@ -1,15 +1,19 @@
+import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
+import 'package:charset_converter/charset_converter.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:uuid/uuid.dart';
 
 import '../features/home/home_background_notifier.dart';
+import '../models/album.dart';
+import '../models/album_filter.dart';
 import '../providers/providers.dart';
+import '../services/csv_service.dart';
 import '../theme/app_theme.dart';
-
-// TODO: 클래식 재작성 (2B)
-//   book 시절 CSV 내보내기 서비스 프로바이더가 여기 있었다.
-//   csv_export_service.dart 는 2A에서 삭제됨 — 앨범 기준으로 재작성 필요.
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -78,12 +82,12 @@ class SettingsScreen extends ConsumerWidget {
           ),
           const _SectionHeader('작품 데이터'),
           const _WorksSyncTile(),
+          const _SectionHeader('데이터 관리'),
+          const _CsvExportTile(),
+          const _CsvImportTile(),
           // TODO: 클래식 재작성 (2B)
-          //   '데이터 관리' 섹션 전체를 비활성화했다. 원래 항목:
-          //     - CSV로 내보내기  (csv_export_service, bookRepositoryProvider)
-          //     - CSV 가져오기    (/csv-import 라우트, csv_import_screen)
-          //     - KDC 자동 채우기 (LibrarySearchService.getClassNo + updateBook)
-          //   앨범/작품 기준 내보내기·가져오기로 재설계 후 복원할 것.
+          //   book 시절의 KDC 자동 채우기(LibrarySearchService)는 도서 전용이라
+          //   되살리지 않는다. 대응물이 있다면 Work 매칭 백필 쪽이다.
           const _SectionHeader('계정'),
           Padding(
             padding:
@@ -213,6 +217,234 @@ class _WorksSyncTile extends ConsumerWidget {
     );
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CSV 내보내기 / 가져오기 (대 1-H)
+//   형식·파싱은 services/csv_service.dart. 여기는 파일 입출력과 확인 UI만 맡는다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _CsvExportTile extends ConsumerStatefulWidget {
+  const _CsvExportTile();
+
+  @override
+  ConsumerState<_CsvExportTile> createState() => _CsvExportTileState();
+}
+
+class _CsvExportTileState extends ConsumerState<_CsvExportTile> {
+  bool _busy = false;
+
+  Future<void> _run() async {
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _busy = true);
+    try {
+      final repo = ref.read(collectionRepositoryProvider);
+
+      // 목록 뷰는 하위를 안 들고 있어 CSV를 못 만든다 — id만 얻고 애그리게이트를
+      // 하나씩 조립한다. 내보내기는 드물게 누르는 동작이라 N번 조회를 감수한다.
+      final summaries = await repo.getAlbumSummaries(AlbumFilter.empty);
+      final albums = <Album>[];
+      for (final s in summaries) {
+        final a = await repo.getAlbum(s.id);
+        if (a != null) albums.add(a);
+      }
+      if (albums.isEmpty) {
+        messenger.showSnackBar(
+            const SnackBar(content: Text('내보낼 음반이 없습니다')));
+        return;
+      }
+
+      final csv = buildAlbumCsv(albums);
+      // BOM을 붙인다 — 없으면 Excel이 UTF-8을 못 알아채 한글이 깨진다.
+      final bytes = Uint8List.fromList([0xEF, 0xBB, 0xBF, ...utf8.encode(csv)]);
+      final now = DateTime.now();
+      final stamp = '${now.year}${_two(now.month)}${_two(now.day)}'
+          '_${_two(now.hour)}${_two(now.minute)}';
+
+      final path = await FilePicker.platform.saveFile(
+        dialogTitle: 'CSV 내보내기',
+        fileName: 'classicshelf_$stamp.csv',
+        bytes: bytes,
+      );
+      if (path == null) return; // 사용자가 취소
+      messenger.showSnackBar(SnackBar(
+        content: Text('음반 ${albums.length}장을 내보냈습니다'),
+      ));
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('내보내기 실패: $e')));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      leading: _busy
+          ? const SizedBox(
+              width: 22,
+              height: 22,
+              child: CircularProgressIndicator(
+                  strokeWidth: 2, color: AppColors.gold),
+            )
+          : const Icon(Icons.upload_file_outlined, color: AppColors.gold),
+      title: const Text('CSV로 내보내기',
+          style: TextStyle(color: AppColors.cream, fontSize: 15)),
+      subtitle: const Text(
+        '수록곡·연주자·악장까지 한 파일로. 백업과 이관에 씁니다',
+        style: TextStyle(color: AppColors.muted, fontSize: 12),
+      ),
+      onTap: _busy ? null : _run,
+    );
+  }
+}
+
+class _CsvImportTile extends ConsumerStatefulWidget {
+  const _CsvImportTile();
+
+  @override
+  ConsumerState<_CsvImportTile> createState() => _CsvImportTileState();
+}
+
+class _CsvImportTileState extends ConsumerState<_CsvImportTile> {
+  bool _busy = false;
+
+  /// 내보내기는 UTF-8(BOM)로 쓰지만, 사용자가 Excel에서 저장하면 한글 Windows
+  /// 기준 CP949로 나온다. UTF-8로 먼저 읽어 보고 깨지면 CP949로 다시 읽는다.
+  Future<String> _decode(Uint8List bytes) async {
+    try {
+      return utf8.decode(bytes);
+    } on FormatException {
+      try {
+        return await CharsetConverter.decode('EUC-KR', bytes);
+      } catch (_) {
+        // 그래도 안 되면 손상 문자를 흘려보내고 진행한다 — 일부 깨진 셀 때문에
+        // 파일 전체를 거부하지 않는다.
+        return utf8.decode(bytes, allowMalformed: true);
+      }
+    }
+  }
+
+  Future<void> _run() async {
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _busy = true);
+    try {
+      // 확장자 필터를 걸면 기기·파일관리자에 따라 csv가 회색으로 잠기는 일이
+      // 있어 전체를 열고 내용으로 판단한다.
+      final picked = await FilePicker.platform.pickFiles(withData: true);
+      final bytes = picked?.files.single.bytes;
+      if (bytes == null) return; // 취소 또는 읽기 실패
+
+      final content = await _decode(bytes);
+      const uuid = Uuid();
+      final result = parseAlbumCsv(content, newId: uuid.v4);
+
+      if (result.albums.isEmpty) {
+        messenger.showSnackBar(SnackBar(
+          content: Text(result.warnings.isEmpty
+              ? '가져올 음반이 없습니다'
+              : result.warnings.first),
+        ));
+        return;
+      }
+      if (!mounted) return;
+
+      // 가져오기는 같은 id의 기존 앨범을 덮어쓴다 — 누르기 전에 규모를 보여준다.
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: AppColors.surface2,
+          title: const Text('CSV 가져오기',
+              style: TextStyle(color: AppColors.cream, fontSize: 17)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '음반 ${result.albums.length}장 '
+                '(수록곡 ${result.albums.fold<int>(0, (n, a) => n + a.compositions.length)}곡)'
+                '을 가져옵니다.\n'
+                '같은 id의 음반이 이미 있으면 덮어씁니다.',
+                style: const TextStyle(color: AppColors.muted, fontSize: 13),
+              ),
+              if (result.warnings.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Text(
+                  '건너뛴 줄 ${result.warnings.length}건',
+                  style: const TextStyle(color: AppColors.red, fontSize: 12),
+                ),
+                const SizedBox(height: 4),
+                ...result.warnings.take(3).map((w) => Text(
+                      '· $w',
+                      style: const TextStyle(
+                          color: AppColors.dim, fontSize: 11),
+                    )),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child:
+                  const Text('취소', style: TextStyle(color: AppColors.muted)),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('가져오기',
+                  style: TextStyle(color: AppColors.gold)),
+            ),
+          ],
+        ),
+      );
+      if (ok != true) return;
+
+      // 저장은 기존 경로 그대로 — saveAlbum이 로컬 커밋 후 온라인이면 원격,
+      // 아니면 큐에 쌓는다. 가져오기 전용 저장 경로를 만들지 않는다.
+      final repo = ref.read(collectionRepositoryProvider);
+      var saved = 0;
+      final failures = <String>[];
+      for (final a in result.albums) {
+        try {
+          await repo.saveAlbum(a);
+          saved++;
+        } catch (e) {
+          failures.add('${a.title}: $e');
+        }
+      }
+      messenger.showSnackBar(SnackBar(
+        content: Text(failures.isEmpty
+            ? '음반 $saved장을 가져왔습니다'
+            : '음반 $saved장 가져옴 · ${failures.length}장 실패'),
+      ));
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('가져오기 실패: $e')));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      leading: _busy
+          ? const SizedBox(
+              width: 22,
+              height: 22,
+              child: CircularProgressIndicator(
+                  strokeWidth: 2, color: AppColors.gold),
+            )
+          : const Icon(Icons.download_outlined, color: AppColors.gold),
+      title: const Text('CSV 가져오기',
+          style: TextStyle(color: AppColors.cream, fontSize: 15)),
+      subtitle: const Text(
+        '내보낸 형식 그대로. 같은 id면 덮어쓰고, 없으면 새로 만듭니다',
+        style: TextStyle(color: AppColors.muted, fontSize: 12),
+      ),
+      onTap: _busy ? null : _run,
+    );
+  }
+}
+
+String _two(int n) => n.toString().padLeft(2, '0');
 
 class _SectionHeader extends StatelessWidget {
   final String title;
