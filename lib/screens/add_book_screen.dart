@@ -949,8 +949,23 @@ class _AddAlbumScreenState extends ConsumerState<AddAlbumScreen> {
     );
   }
 
+  /// 악장을 인접 항목과 맞바꾼다(§17-12).
+  /// 별도 정렬 필드를 두지 않는다 — 저장이 리스트 순서를 그대로 seq로 굽고
+  /// (`seq: movements.length`), 조회·pre-fill이 seq로 정렬해 되돌린다.
+  /// 즉 **리스트 순서 자체가 곧 저장 순서**라 여기서 자리만 바꾸면 끝난다.
+  void _moveMovement(_CompositionCard card, int index, int delta) {
+    final target = index + delta;
+    if (target < 0 || target >= card.movements.length) return;
+    setState(() {
+      final row = card.movements.removeAt(index);
+      card.movements.insert(target, row);
+    });
+  }
+
   Widget _buildMovementRow(_CompositionCard card, int index) {
     final row = card.movements[index];
+    final isFirst = index == 0;
+    final isLast = index == card.movements.length - 1;
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Column(
@@ -970,12 +985,20 @@ class _AddAlbumScreenState extends ConsumerState<AddAlbumScreen> {
                   hint: '악장 제목 (예: II. Andante)',
                 ),
               ),
-              IconButton(
-                icon: const Icon(Icons.close, size: 16, color: AppColors.muted),
+              // 순서 조정 — 양 끝에서는 해당 방향을 비활성화한다.
+              _RowIconButton(
+                icon: Icons.keyboard_arrow_up,
+                tooltip: '위로',
+                onPressed: isFirst ? null : () => _moveMovement(card, index, -1),
+              ),
+              _RowIconButton(
+                icon: Icons.keyboard_arrow_down,
+                tooltip: '아래로',
+                onPressed: isLast ? null : () => _moveMovement(card, index, 1),
+              ),
+              _RowIconButton(
+                icon: Icons.close,
                 tooltip: '이 악장 삭제',
-                visualDensity: VisualDensity.compact,
-                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                padding: EdgeInsets.zero,
                 onPressed: () => setState(() {
                   card.movements.removeAt(index);
                   row.dispose();
@@ -1193,6 +1216,38 @@ String _durationToText(int? sec) {
 //   AppTextField / AutocompleteField는 위시 편집 시트(§17-20)와 공유하려고
 //   widgets/form_fields.dart로 옮겼다.
 // ─────────────────────────────────────────────────────────────────────────────
+
+/// 좁은 행에 여러 개를 늘어놓아야 하는 아이콘 버튼(악장 순서·삭제).
+/// 기본 IconButton은 48dp 터치 영역을 차지해 세 개만 붙여도 제목 칸을 잡아먹는다.
+class _RowIconButton extends StatelessWidget {
+  final IconData icon;
+  final String tooltip;
+
+  /// null이면 비활성 — 목록 양 끝의 이동 버튼이 이 상태가 된다.
+  final VoidCallback? onPressed;
+
+  const _RowIconButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      icon: Icon(
+        icon,
+        size: 18,
+        color: onPressed == null ? AppColors.dim : AppColors.muted,
+      ),
+      tooltip: tooltip,
+      visualDensity: VisualDensity.compact,
+      constraints: const BoxConstraints(minWidth: 28, minHeight: 32),
+      padding: EdgeInsets.zero,
+      onPressed: onPressed,
+    );
+  }
+}
 
 class _DateField extends StatelessWidget {
   final String label;
