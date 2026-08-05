@@ -478,16 +478,32 @@ class CollectionRepositoryImpl implements CollectionRepository {
           .toSet();
       narrow({...apAlbums, ...cpAlbums});
     }
-    // query: title ∪ composer 부분일치(OR). // TODO: FTS5 trigram (대 1-E)
+    // query: 앨범 제목 ∪ 수록곡 작곡가 부분일치(OR).
+    // FTS5 trigram(§17-23)이 있으면 인덱스로 album id 집합을 얻어 다른 축과
+    // 똑같이 narrow에 넘긴다 — 조회 파이프라인 모양은 그대로 두고 매칭 수단만
+    // 바꾼다. 3글자 미만이거나 인덱스가 없으면 기존 메모리 contains로 간다.
     if (f.query != null && f.query!.trim().isNotEmpty) {
-      final ql = f.query!.trim().toLowerCase();
-      final titleHits = albums
-          .where((a) => a.title.toLowerCase().contains(ql))
-          .map((a) => a.id);
-      final composerHits = comps
-          .where((c) => c.composer.toLowerCase().contains(ql))
-          .map((c) => c.albumId);
-      narrow({...titleHits, ...composerHits});
+      final q = f.query!.trim();
+      Set<String>? ftsHits;
+      if (_db.ftsAvailable && ftsUsable(q)) {
+        try {
+          ftsHits = await _searchAlbumIdsFts(q);
+        } catch (e) {
+          debugPrint('[FTS] 앨범 검색 실패 → 메모리 폴백: $e');
+        }
+      }
+      if (ftsHits != null) {
+        narrow(ftsHits);
+      } else {
+        final ql = q.toLowerCase();
+        final titleHits = albums
+            .where((a) => a.title.toLowerCase().contains(ql))
+            .map((a) => a.id);
+        final composerHits = comps
+            .where((c) => c.composer.toLowerCase().contains(ql))
+            .map((c) => c.albumId);
+        narrow({...titleHits, ...composerHits});
+      }
     }
 
     // ── 4) 필터 적용 ──
@@ -623,6 +639,28 @@ class CollectionRepositoryImpl implements CollectionRepository {
   @override
   Future<List<String>> suggestComposers(String query, {int limit = 20}) async {
     final q = query.trim();
+
+    // FTS5 trigram(§17-23). 3글자 이상일 때만 — trigram은 그보다 짧은 걸
+    // 색인하지 않아 MATCH가 빈손으로 돌아온다. 짧은 입력은 아래 LIKE로 간다.
+    if (q.isNotEmpty && _db.ftsAvailable && ftsUsable(q)) {
+      try {
+        final rows = await _db.customSelect(
+          'SELECT DISTINCT w.composer AS composer '
+          'FROM works_fts JOIN works w ON w.rowid = works_fts.rowid '
+          'WHERE works_fts MATCH ?1 '
+          'ORDER BY w.composer LIMIT ?2',
+          variables: [
+            Variable<String>(ftsColumnPhrase('composer', q)),
+            Variable<int>(limit),
+          ],
+          readsFrom: {_db.works},
+        ).get();
+        return rows.map((r) => r.read<String>('composer')).toList();
+      } catch (e) {
+        debugPrint('[FTS] suggestComposers 실패 → LIKE 폴백: $e');
+      }
+    }
+
     final sel = _db.selectOnly(_db.works)
       ..addColumns([_db.works.composer])
       ..groupBy([_db.works.composer])
@@ -642,6 +680,31 @@ class CollectionRepositoryImpl implements CollectionRepository {
     final c = composer.trim();
     if (c.isEmpty) return const [];
     final q = query.trim();
+
+    // FTS5 trigram(§17-23). 작곡가는 정확 일치로 좁히고 제목만 MATCH에 맡긴다.
+    // 정렬 축(popular > recommended > 제목)은 LIKE 경로와 동일하게 유지한다 —
+    // 검색 방식이 바뀌었다고 자동완성 순위(§3-7)까지 달라지면 안 된다.
+    if (q.isNotEmpty && _db.ftsAvailable && ftsUsable(q)) {
+      try {
+        final rows = await _db.customSelect(
+          'SELECT w.* FROM works_fts JOIN works w ON w.rowid = works_fts.rowid '
+          'WHERE works_fts MATCH ?1 AND w.composer = ?2 '
+          'ORDER BY w.popular DESC, w.recommended DESC, w.title ASC '
+          'LIMIT ?3',
+          variables: [
+            Variable<String>(ftsColumnPhrase('title', q)),
+            Variable<String>(c),
+            Variable<int>(limit),
+          ],
+          readsFrom: {_db.works},
+        ).get();
+        return rows
+            .map((r) => _workFromRow(_db.works.map(r.data)))
+            .toList();
+      } catch (e) {
+        debugPrint('[FTS] suggestWorks 실패 → LIKE 폴백: $e');
+      }
+    }
 
     final sel = _db.select(_db.works)
       ..where((t) => t.composer.equals(c))
@@ -692,6 +755,14 @@ class CollectionRepositoryImpl implements CollectionRepository {
             )),
       );
     });
+
+    // works는 트리거 없이 벌크로 갈아끼우므로(24,760건 — 행 단위 트리거를 걸면
+    // 미러링이 크게 느려진다) 여기서 FTS 인덱스를 한 번에 다시 만든다(§17-23).
+    try {
+      await _db.rebuildWorksFts();
+    } catch (e) {
+      debugPrint('[FTS] works 인덱스 재구축 실패(자동완성은 LIKE로 동작): $e');
+    }
 
     debugPrint('[WORKS] 동기화 완료 — works ${workRows.length}건 / '
         'aliases ${aliasRows.length}건');
@@ -881,6 +952,25 @@ class CollectionRepositoryImpl implements CollectionRepository {
   @override
   Stream<List<WishItem>> watchWishlist() =>
       _wishlistQuery().watch().map((rows) => rows.map(_wishFromRow).toList());
+
+  /// 검색어에 걸리는 album id 집합을 FTS5로 구한다(§17-23).
+  /// 앨범 제목 ∪ 수록곡 작곡가·제목 — 사용자가 "무슨 곡이 들었나"로도 찾는다.
+  Future<Set<String>> _searchAlbumIdsFts(String query) async {
+    // MATCH 왼쪽은 반드시 테이블 이름 — 별칭을 쓰면 깨진다(ftsColumnPhrase 주석).
+    final phrase = ftsPhrase(query);
+    final rows = await _db.customSelect(
+      'SELECT a.id AS album_id FROM albums_fts '
+      '  JOIN albums a ON a.rowid = albums_fts.rowid '
+      '  WHERE albums_fts MATCH ?1 '
+      'UNION '
+      'SELECT c.album_id AS album_id FROM compositions_fts '
+      '  JOIN compositions c ON c.rowid = compositions_fts.rowid '
+      '  WHERE compositions_fts MATCH ?1',
+      variables: [Variable<String>(phrase)],
+      readsFrom: {_db.albums, _db.compositions},
+    ).get();
+    return rows.map((r) => r.read<String>('album_id')).toSet();
+  }
 
   @override
   Future<List<CompositionKey>> getCompositionMatchKeys() async {

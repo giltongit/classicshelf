@@ -214,12 +214,19 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
+
+  /// FTS5 trigram 인덱스를 실제로 쓸 수 있는지(§17-23).
+  /// trigram 토크나이저는 SQLite 3.34+ & SQLITE_ENABLE_FTS5 빌드에서만 있다.
+  /// 없으면 가상 테이블 생성이 실패하는데, 그건 치명적 상황이 아니라 그냥
+  /// 예전처럼 LIKE로 돌아가면 되는 상황이다 — 플래그로 남겨 조회 쪽이 분기한다.
+  bool ftsAvailable = false;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
         onCreate: (m) async {
           await m.createAll();
+          await _createFtsObjects();
         },
         // 로컬은 캐시라 drop & 재동기화도 가능하지만(§3-5), 미전송 편집이
         // sync_queue에 남아 있을 수 있어 재생성하지 않고 컬럼만 더한다.
@@ -235,9 +242,137 @@ class AppDatabase extends _$AppDatabase {
             await m.addColumn(wishlist, wishlist.composer);
             await m.addColumn(wishlist, wishlist.title);
           }
+          // v4: FTS5 trigram 인덱스(§17-23). 서버에는 대응물이 없다 —
+          //   순수 로컬 조회 가속이라 Supabase 마이그레이션과 무관하다.
+          if (from < 4) {
+            await _createFtsObjects();
+          }
+        },
+        beforeOpen: (details) async {
+          // 마이그레이션을 타지 않는 기동(이미 v4)에서도 플래그를 세워야 한다.
+          // 가상 테이블 존재 여부를 직접 물어본다.
+          if (!ftsAvailable) {
+            ftsAvailable = await _probeFts();
+          }
         },
       );
+
+  // ── FTS5 (§17-23) ─────────────────────────────────────────────────────────
+  // external content 방식: 본문을 FTS가 복제하지 않고 원본 테이블을 가리킨다.
+  // 저장 공간이 두 배가 되지 않고, works 24,760건 같은 대량 참조 데이터에 특히
+  // 유리하다. 대신 원본이 바뀌면 인덱스를 따로 맞춰야 한다:
+  //   · albums/compositions(사용자 데이터, 개별 쓰기 다수) → 트리거로 자동 동기화.
+  //   · works(참조 데이터, 벌크 upsert 한 번) → 트리거 대신 동기화 후 rebuild.
+  //     24,760건에 행 단위 트리거를 걸면 벌크 미러링이 크게 느려진다.
+
+  Future<void> _createFtsObjects() async {
+    try {
+      await customStatement('''
+        CREATE VIRTUAL TABLE IF NOT EXISTS works_fts USING fts5(
+          composer, title, content='works', tokenize='trigram'
+        )''');
+      await customStatement('''
+        CREATE VIRTUAL TABLE IF NOT EXISTS albums_fts USING fts5(
+          title, content='albums', tokenize='trigram'
+        )''');
+      await customStatement('''
+        CREATE VIRTUAL TABLE IF NOT EXISTS compositions_fts USING fts5(
+          composer, title, content='compositions', tokenize='trigram'
+        )''');
+
+      // 사용자 데이터 동기화 트리거. external content라 delete는 특수 구문
+      // ('delete', rowid, 옛 값들)으로 옛 항목을 지워야 한다.
+      await customStatement('''
+        CREATE TRIGGER IF NOT EXISTS albums_fts_ai AFTER INSERT ON albums BEGIN
+          INSERT INTO albums_fts(rowid, title) VALUES (new.rowid, new.title);
+        END''');
+      await customStatement('''
+        CREATE TRIGGER IF NOT EXISTS albums_fts_ad AFTER DELETE ON albums BEGIN
+          INSERT INTO albums_fts(albums_fts, rowid, title)
+            VALUES ('delete', old.rowid, old.title);
+        END''');
+      await customStatement('''
+        CREATE TRIGGER IF NOT EXISTS albums_fts_au AFTER UPDATE ON albums BEGIN
+          INSERT INTO albums_fts(albums_fts, rowid, title)
+            VALUES ('delete', old.rowid, old.title);
+          INSERT INTO albums_fts(rowid, title) VALUES (new.rowid, new.title);
+        END''');
+
+      await customStatement('''
+        CREATE TRIGGER IF NOT EXISTS compositions_fts_ai
+        AFTER INSERT ON compositions BEGIN
+          INSERT INTO compositions_fts(rowid, composer, title)
+            VALUES (new.rowid, new.composer, new.title);
+        END''');
+      await customStatement('''
+        CREATE TRIGGER IF NOT EXISTS compositions_fts_ad
+        AFTER DELETE ON compositions BEGIN
+          INSERT INTO compositions_fts(compositions_fts, rowid, composer, title)
+            VALUES ('delete', old.rowid, old.composer, old.title);
+        END''');
+      await customStatement('''
+        CREATE TRIGGER IF NOT EXISTS compositions_fts_au
+        AFTER UPDATE ON compositions BEGIN
+          INSERT INTO compositions_fts(compositions_fts, rowid, composer, title)
+            VALUES ('delete', old.rowid, old.composer, old.title);
+          INSERT INTO compositions_fts(rowid, composer, title)
+            VALUES (new.rowid, new.composer, new.title);
+        END''');
+
+      // 이미 들어 있던 행을 인덱스에 채운다(업그레이드 경로).
+      await rebuildFtsIndexes();
+      ftsAvailable = true;
+    } catch (e) {
+      // trigram 미지원 빌드 등 — LIKE 폴백으로 살아간다.
+      ftsAvailable = false;
+    }
+  }
+
+  /// v4 이후 기동에서 인덱스가 실제로 살아 있는지 확인.
+  Future<bool> _probeFts() async {
+    try {
+      await customSelect("SELECT rowid FROM works_fts WHERE works_fts MATCH "
+              "'\"zzq\"' LIMIT 1")
+          .get();
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// external content 인덱스를 원본에서 다시 만든다.
+  /// works 벌크 동기화 직후처럼 트리거 없이 원본만 바뀐 경우에 호출한다.
+  Future<void> rebuildFtsIndexes() async {
+    await customStatement("INSERT INTO works_fts(works_fts) VALUES('rebuild')");
+    await customStatement("INSERT INTO albums_fts(albums_fts) VALUES('rebuild')");
+    await customStatement(
+        "INSERT INTO compositions_fts(compositions_fts) VALUES('rebuild')");
+  }
+
+  /// works 인덱스만 재구축(벌크 동기화 후).
+  Future<void> rebuildWorksFts() async {
+    if (!ftsAvailable) return;
+    await customStatement("INSERT INTO works_fts(works_fts) VALUES('rebuild')");
+  }
 }
+
+/// 사용자 입력을 FTS5 MATCH 구문의 **구(phrase)** 로 감싼다.
+/// 큰따옴표로 감싸면 내용이 통째로 하나의 구가 되어, 하이픈·콜론·따옴표 같은
+/// FTS5 연산자 문자가 질의를 깨뜨리지 않는다(내부 따옴표는 두 번 써서 이스케이프).
+String ftsPhrase(String query) => '"${query.replaceAll('"', '""')}"';
+
+/// 특정 컬럼으로 한정한 MATCH 식.
+///
+/// 컬럼 한정은 **질의 문자열 안에서** 해야 한다(`composer : "..."`). SQL 쪽에서
+/// `f.composer MATCH ?` 처럼 쓰면 안 된다 — FTS5의 MATCH 왼쪽은 테이블 이름
+/// 자리이고, 별칭(`f MATCH ?`)은 "no such column: f"로 깨진다. 실제로 그렇게
+/// 썼다가 앨범 검색이 조용히 폴백으로 돌아간 적이 있다(§17-23).
+String ftsColumnPhrase(String column, String query) =>
+    '$column : ${ftsPhrase(query)}';
+
+/// trigram 토크나이저는 3글자 미만을 색인하지 않는다 — 그 길이는 MATCH가
+/// 아무것도 못 찾으므로 호출부가 LIKE로 되돌아가야 한다(§6-3의 "2글자 이하 폴백").
+bool ftsUsable(String query) => query.trim().length >= 3;
 
 QueryExecutor openDatabaseConnection() {
   return LazyDatabase(() async {
