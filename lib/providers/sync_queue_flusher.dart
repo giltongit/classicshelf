@@ -101,6 +101,16 @@ class SyncQueueFlusher extends AsyncNotifier<void> {
     }
     _isFlushing = true;
     try {
+      // 0) 세션 확보 (§17-26)
+      // 오프라인으로 앱을 켜면 익명 로그인이 실패한 채 세션 없이 시작한다.
+      // main의 ensureSignedIn은 부팅 때 한 번뿐이라, 그 뒤 온라인이 되어도
+      // 세션이 없는 상태가 유지된다 — flush는 user_id를 못 구해 업서트를
+      // 전부 "user_id 미해결"로 스킵하고, 큐는 앱을 다시 켤 때까지 안 빈다.
+      // 지금은 온라인이라고 판단해 여기 왔으므로 로그인을 한 번 더 시도한다.
+      // ensureSignedIn은 세션이 있으면 즉시 반환하는 멱등 호출이라,
+      // 정상 경로에서는 비용이 없다.
+      await ref.read(authServiceProvider).ensureSignedIn();
+
       // 1) 애그리게이트 insert/update/delete 반영
       final result = await ref.read(collectionRepositoryProvider).flushSyncQueue();
 
