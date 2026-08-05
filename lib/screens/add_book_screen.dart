@@ -22,7 +22,6 @@
 // =============================================================================
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
@@ -30,6 +29,7 @@ import '../models/album.dart';
 import '../models/work.dart';
 import '../providers/providers.dart';
 import '../theme/app_theme.dart';
+import '../widgets/form_fields.dart';
 
 const _uuid = Uuid();
 
@@ -348,14 +348,14 @@ class _AddAlbumScreenState extends ConsumerState<AddAlbumScreen> {
             // ── Step 1 ──
             const _SectionLabel('음반 정보'),
             const SizedBox(height: 12),
-            _Field(
+            AppTextField(
               controller: _title,
               label: '제목 *',
               hint: '예: Goldberg Variations',
               textInputAction: TextInputAction.next,
             ),
             const SizedBox(height: 12),
-            _Field(
+            AppTextField(
               controller: _label,
               label: '레이블',
               hint: '예: Deutsche Grammophon',
@@ -364,7 +364,7 @@ class _AddAlbumScreenState extends ConsumerState<AddAlbumScreen> {
             Row(
               children: [
                 Expanded(
-                  child: _Field(
+                  child: AppTextField(
                     controller: _releaseYear,
                     label: '발매연도',
                     hint: '예: 1981',
@@ -374,7 +374,7 @@ class _AddAlbumScreenState extends ConsumerState<AddAlbumScreen> {
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: _Field(
+                  child: AppTextField(
                     controller: _discCount,
                     label: '디스크 수',
                     numeric: true,
@@ -484,13 +484,13 @@ class _AddAlbumScreenState extends ConsumerState<AddAlbumScreen> {
                   : () => setState(() => _acquiredAt = null),
             ),
             const SizedBox(height: 12),
-            _Field(
+            AppTextField(
               controller: _location,
               label: '보관 위치',
               hint: '예: 거실 선반 2단',
             ),
             const SizedBox(height: 12),
-            _Field(
+            AppTextField(
               controller: _review,
               label: '메모',
               hint: '감상·구입 경위 등',
@@ -552,7 +552,7 @@ class _AddAlbumScreenState extends ConsumerState<AddAlbumScreen> {
           ),
           const SizedBox(width: 8),
           Expanded(
-            child: _Field(controller: row.name, hint: '이름'),
+            child: AppTextField(controller: row.name, hint: '이름'),
           ),
           IconButton(
             icon: const Icon(Icons.close, size: 18, color: AppColors.muted),
@@ -603,7 +603,7 @@ class _AddAlbumScreenState extends ConsumerState<AddAlbumScreen> {
             ],
           ),
           const SizedBox(height: 4),
-          _AutocompleteField<String>(
+          AutocompleteField<String>(
             controller: card.composer,
             focusNode: card.composerFocus,
             label: '작곡가 *',
@@ -627,7 +627,7 @@ class _AddAlbumScreenState extends ConsumerState<AddAlbumScreen> {
           const SizedBox(height: 10),
           // 제목은 가장 길어 한 줄을 통째로 쓴다. 자동완성에서 고르면 정규 작품과
           // 이어지고(workId), 자유 입력이면 표지에서 읽은 그대로만 남는다.
-          _AutocompleteField<Work>(
+          AutocompleteField<Work>(
             controller: card.title,
             focusNode: card.titleFocus,
             label: '작품 제목',
@@ -679,7 +679,7 @@ class _AddAlbumScreenState extends ConsumerState<AddAlbumScreen> {
               ),
             ),
           const SizedBox(height: 10),
-          _Field(
+          AppTextField(
             controller: card.catalogNumber,
             label: '작품번호',
             hint: '예: BWV 988',
@@ -688,7 +688,7 @@ class _AddAlbumScreenState extends ConsumerState<AddAlbumScreen> {
           Row(
             children: [
               Expanded(
-                child: _Field(
+                child: AppTextField(
                   controller: card.discNo,
                   label: '디스크',
                   numeric: true,
@@ -697,7 +697,7 @@ class _AddAlbumScreenState extends ConsumerState<AddAlbumScreen> {
               ),
               const SizedBox(width: 8),
               Expanded(
-                child: _Field(
+                child: AppTextField(
                   controller: card.trackFrom,
                   label: '시작 트랙',
                   numeric: true,
@@ -706,7 +706,7 @@ class _AddAlbumScreenState extends ConsumerState<AddAlbumScreen> {
               ),
               const SizedBox(width: 8),
               Expanded(
-                child: _Field(
+                child: AppTextField(
                   controller: card.trackTo,
                   label: '끝 트랙',
                   numeric: true,
@@ -939,7 +939,7 @@ class _AddAlbumScreenState extends ConsumerState<AddAlbumScreen> {
                 ),
               ),
               Expanded(
-                child: _Field(
+                child: AppTextField(
                   controller: row.title,
                   hint: '악장 제목 (예: II. Andante)',
                 ),
@@ -964,7 +964,7 @@ class _AddAlbumScreenState extends ConsumerState<AddAlbumScreen> {
             child: Row(
               children: [
                 Expanded(
-                  child: _Field(
+                  child: AppTextField(
                     controller: row.trackNo,
                     label: '트랙',
                     numeric: true,
@@ -973,7 +973,7 @@ class _AddAlbumScreenState extends ConsumerState<AddAlbumScreen> {
                 ),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: _Field(
+                  child: AppTextField(
                     controller: row.duration,
                     label: '길이',
                     hint: '4:32',
@@ -1164,150 +1164,9 @@ String _durationToText(int? sec) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 공용 위젯
+//   AppTextField / AutocompleteField는 위시 편집 시트(§17-20)와 공유하려고
+//   widgets/form_fields.dart로 옮겼다.
 // ─────────────────────────────────────────────────────────────────────────────
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 자동완성 필드 (§3-4 Work 매칭)
-//   로컬 works(참조 데이터)에서 제안한다. 참조 데이터를 아직 안 받았거나
-//   조회가 실패하면 제안이 비어 그냥 평범한 TextField처럼 동작한다 —
-//   자동완성은 거들 뿐이고, 자유 텍스트 입력 흐름을 절대 막지 않는다.
-//
-//   Autocomplete가 아니라 RawAutocomplete를 쓴 이유: 카드가 이미 들고 있는
-//   TextEditingController를 그대로 넘겨야 한다(빈 카드 판정·저장 조립이 그
-//   컨트롤러를 본다). Autocomplete는 내부에서 컨트롤러를 새로 만들어 이중
-//   관리가 된다.
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _AutocompleteField<T extends Object> extends StatelessWidget {
-  final TextEditingController controller;
-  final FocusNode focusNode;
-  final String label;
-  final String? hint;
-
-  /// 입력값으로 후보를 조회한다. 실패하면 빈 목록(자동완성만 조용히 꺼진다).
-  final Future<List<T>> Function(String query) search;
-
-  /// 후보 → 입력란에 넣을 문자열.
-  final String Function(T option) displayString;
-
-  /// 후보 한 줄의 표시 위젯(부제 등을 붙일 수 있게 분리).
-  final Widget Function(T option) optionBuilder;
-
-  final void Function(T option) onSelected;
-  final ValueChanged<String>? onChanged;
-
-  const _AutocompleteField({
-    required this.controller,
-    required this.focusNode,
-    required this.label,
-    this.hint,
-    required this.search,
-    required this.displayString,
-    required this.optionBuilder,
-    required this.onSelected,
-    this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return RawAutocomplete<T>(
-      textEditingController: controller,
-      focusNode: focusNode,
-      displayStringForOption: displayString,
-      optionsBuilder: (value) async {
-        try {
-          return await search(value.text);
-        } catch (_) {
-          return const Iterable.empty();
-        }
-      },
-      onSelected: onSelected,
-      fieldViewBuilder: (context, ctrl, node, onSubmit) => _Field(
-        controller: ctrl,
-        focusNode: node,
-        label: label,
-        hint: hint,
-        onChanged: onChanged,
-      ),
-      optionsViewBuilder: (context, select, options) => Align(
-        alignment: Alignment.topLeft,
-        child: Material(
-          color: AppColors.surface2,
-          elevation: 4,
-          borderRadius: BorderRadius.circular(8),
-          child: ConstrainedBox(
-            // 후보가 많아도 화면을 잡아먹지 않게 자른다.
-            constraints: const BoxConstraints(maxHeight: 260),
-            child: ListView.builder(
-              padding: EdgeInsets.zero,
-              shrinkWrap: true,
-              itemCount: options.length,
-              itemBuilder: (context, i) {
-                final o = options.elementAt(i);
-                return InkWell(
-                  onTap: () => select(o),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 10),
-                    child: optionBuilder(o),
-                  ),
-                );
-              },
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _Field extends StatelessWidget {
-  final TextEditingController controller;
-  final FocusNode? focusNode;
-  final String? label;
-  final String? hint;
-  final bool numeric;
-  final int? maxLength;
-  final int maxLines;
-  final TextInputAction? textInputAction;
-  final ValueChanged<String>? onChanged;
-
-  const _Field({
-    required this.controller,
-    this.focusNode,
-    this.label,
-    this.hint,
-    this.numeric = false,
-    this.maxLength,
-    this.maxLines = 1,
-    this.textInputAction,
-    this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return TextField(
-      controller: controller,
-      focusNode: focusNode,
-      maxLines: maxLines,
-      maxLength: maxLength,
-      textInputAction: textInputAction,
-      onChanged: onChanged,
-      keyboardType: numeric ? TextInputType.number : TextInputType.text,
-      inputFormatters:
-          numeric ? [FilteringTextInputFormatter.digitsOnly] : null,
-      style: const TextStyle(color: AppColors.cream, fontSize: 14),
-      decoration: InputDecoration(
-        labelText: label,
-        hintText: hint,
-        counterText: '', // maxLength 글자수 카운터 숨김
-        isDense: true,
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-      ),
-    );
-  }
-}
 
 class _DateField extends StatelessWidget {
   final String label;

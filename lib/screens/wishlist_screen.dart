@@ -10,10 +10,12 @@
 // 항목 단위 insert/delete라 Album의 LWW 통째 덮어쓰기 함정(§3-2)은 해당 없다:
 //   "폼에 없는 필드가 유실된다"는 문제 자체가 성립하지 않는다.
 //
+// 확정 연결(§17-20, 해소): 카드를 탭하면 추가 시트가 편집 모드로 열리고, 등록 폼과
+//   같은 작곡가→작품 2단 자동완성(widgets/form_fields.dart)으로 work_id를 채운다.
+//   고르지 않으면 workId는 null 그대로 — 자유 텍스트 위시도 계속 유효하다.
+//
 // 이번 범위 밖(§17 부채):
 //   · 자동 해소 — 앨범을 등록할 때 매칭되는 위시를 감지해 지우는 로직.
-//   · 확정 연결 — composer/title 자유 텍스트를 실제 album_id/work_id로 잇는 UI.
-//     Works 시드(대 1-A) 이후 작업.
 // =============================================================================
 
 import 'package:flutter/material.dart';
@@ -21,8 +23,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import '../models/wishlist_entry.dart';
+import '../models/work.dart';
 import '../providers/providers.dart';
 import '../theme/app_theme.dart';
+import '../widgets/form_fields.dart';
 
 const _uuid = Uuid();
 
@@ -40,7 +44,7 @@ class WishlistScreen extends ConsumerWidget {
           IconButton(
             icon: const Icon(Icons.add),
             tooltip: '희망 항목 추가',
-            onPressed: () => _openAddSheet(context, ref),
+            onPressed: () => _openWishSheet(context),
           ),
         ],
       ),
@@ -69,7 +73,7 @@ class WishlistScreen extends ConsumerWidget {
         backgroundColor: AppColors.gold,
         foregroundColor: AppColors.bg,
         tooltip: '희망 항목 추가',
-        onPressed: () => _openAddSheet(context, ref),
+        onPressed: () => _openWishSheet(context),
         child: const Icon(Icons.add),
       ),
     );
@@ -106,7 +110,7 @@ class _EmptyState extends ConsumerWidget {
               foregroundColor: AppColors.gold,
               side: BorderSide(color: AppColors.gold.withValues(alpha: 0.5)),
             ),
-            onPressed: () => _openAddSheet(context, ref),
+            onPressed: () => _openWishSheet(context),
           ),
         ],
       ),
@@ -143,6 +147,8 @@ class _WishCard extends ConsumerWidget {
         borderRadius: BorderRadius.circular(10),
         child: InkWell(
           borderRadius: BorderRadius.circular(10),
+          // 상세 화면 대신 편집 시트 — 확정 연결(work_id)을 여기서 붙인다.
+          onTap: () => _openWishSheet(context, existing: item),
           // 상세 화면이 없으므로 길게 눌러 삭제를 스와이프의 대체 경로로 둔다.
           onLongPress: () async {
             if (await _confirmDelete(context, item) && context.mounted) {
@@ -180,6 +186,12 @@ class _WishCard extends ConsumerWidget {
                         children: [
                           _TypeBadge(type: item.type),
                           const SizedBox(width: 8),
+                          // 확정 연결됨 — 자동 해소 감지가 강한 매칭을 쓸 수 있다.
+                          if (item.workId != null) ...[
+                            const Icon(Icons.link,
+                                size: 13, color: AppColors.gold),
+                            const SizedBox(width: 8),
+                          ],
                           if (item.createdAt != null)
                             Text(
                               _formatDate(item.createdAt!),
@@ -280,11 +292,14 @@ Future<void> _delete(
   }
 }
 
-// ── 추가 시트 ──────────────────────────────────────────────────────────────────
-// Works 시드(대 1-A)가 아직 없어 자동완성 대상이 없다. compositions.title(§3-1a)과
-// 같은 방식으로 자유 텍스트를 받는다 — album_id/work_id는 여기서 채우지 않는다.
+// ── 추가·편집 시트 ─────────────────────────────────────────────────────────────
+// 한 시트가 신규와 편집을 겸한다(existing != null 이면 편집). 위시는 항목 단위
+// upsert라 같은 id로 다시 저장하면 수정이 된다 — 별도 화면을 만들 이유가 없다.
+//
+// 작곡가·작품 입력은 등록 폼과 같은 AutocompleteField다. 고르면 workId가 붙고,
+// 그냥 타이핑하면 예전처럼 자유 텍스트로 남는다 — 연결을 강제하지 않는다(§4-9).
 
-void _openAddSheet(BuildContext context, WidgetRef ref) {
+void _openWishSheet(BuildContext context, {WishItem? existing}) {
   showModalBottomSheet<void>(
     context: context,
     backgroundColor: AppColors.surface,
@@ -292,45 +307,98 @@ void _openAddSheet(BuildContext context, WidgetRef ref) {
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
     ),
-    builder: (_) => const _AddWishSheet(),
+    builder: (_) => _WishSheet(existing: existing),
   );
 }
 
-class _AddWishSheet extends ConsumerStatefulWidget {
-  const _AddWishSheet();
+class _WishSheet extends ConsumerStatefulWidget {
+  /// null이면 신규 추가, 값이 있으면 그 항목의 편집.
+  final WishItem? existing;
+  const _WishSheet({this.existing});
 
   @override
-  ConsumerState<_AddWishSheet> createState() => _AddWishSheetState();
+  ConsumerState<_WishSheet> createState() => _WishSheetState();
 }
 
-class _AddWishSheetState extends ConsumerState<_AddWishSheet> {
-  final _formKey = GlobalKey<FormState>();
+class _WishSheetState extends ConsumerState<_WishSheet> {
   final _composerCtrl = TextEditingController();
   final _titleCtrl = TextEditingController();
-  WishType _type = WishType.work;
+  final _composerFocus = FocusNode();
+  final _titleFocus = FocusNode();
+
+  late final String _id;
+  late WishType _type;
   bool _saving = false;
+  String? _composerError; // 자동완성 필드는 TextFormField가 아니라 직접 검증한다
+
+  /// 자동완성에서 고른 정규 작품. 안 골랐으면 null(미매칭 허용).
+  String? _workId;
+
+  /// workId를 채울 때 고른 작품의 제목. 이후 제목을 손으로 고치면 매칭이 더는
+  /// 유효하지 않으므로 workId를 떨군다(등록 폼 카드와 같은 규칙).
+  String? _matchedTitle;
+
+  // 폼에 입력란이 없는 필드 — 편집 시 그대로 다시 실어 보낸다.
+  // saveWishItem은 행 통째 upsert라 여기서 안 들고 있으면 저장 한 번에 지워진다.
+  String? _albumId;
+  int? _priority;
+  String? _note;
+
+  bool get _isEditing => widget.existing != null;
+
+  @override
+  void initState() {
+    super.initState();
+    final e = widget.existing;
+    _id = e?.id ?? _uuid.v4(); // 신규는 클라이언트 UUID 발급(§3-0)
+    _type = e?.type ?? WishType.work;
+    _composerCtrl.text = e?.composer ?? '';
+    _titleCtrl.text = e?.title ?? '';
+    _workId = e?.workId;
+    _matchedTitle = e?.workId == null ? null : e?.title;
+    _albumId = e?.albumId;
+    _priority = e?.priority;
+    _note = e?.note;
+  }
 
   @override
   void dispose() {
     _composerCtrl.dispose();
     _titleCtrl.dispose();
+    _composerFocus.dispose();
+    _titleFocus.dispose();
     super.dispose();
   }
 
+  /// type=album에는 work_id를 붙일 수 없다(wishlist_target_ck, §6-2).
+  /// 자동완성은 두 유형 모두에서 쓰지만, 음반 단위일 땐 고른 결과가 제목·작곡가
+  /// 텍스트로만 남는다.
+  bool get _canLinkWork => _type == WishType.work;
+
   Future<void> _save() async {
-    if (!_formKey.currentState!.validate()) return;
-    setState(() => _saving = true);
+    final composer = _composerCtrl.text.trim();
+    if (composer.isEmpty) {
+      setState(() => _composerError = '작곡가를 입력하세요');
+      return;
+    }
+    setState(() {
+      _composerError = null;
+      _saving = true;
+    });
 
     final navigator = Navigator.of(context);
     final messenger = ScaffoldMessenger.of(context);
     final title = _titleCtrl.text.trim();
 
-    // 신규는 항상 클라이언트 UUID 발급(§3-0). 위시는 편집 개념이 없어 이 한 곳뿐.
     final item = WishItem(
-      id: _uuid.v4(),
+      id: _id, // 편집이면 기존 id — saveWishItem이 upsert로 수정 처리
       type: _type,
-      composer: _composerCtrl.text.trim(),
+      albumId: _type == WishType.album ? _albumId : null,
+      workId: _canLinkWork ? _workId : null,
+      composer: composer,
       title: title.isEmpty ? null : title,
+      priority: _priority,
+      note: _note,
     );
 
     try {
@@ -338,7 +406,9 @@ class _AddWishSheetState extends ConsumerState<_AddWishSheet> {
       // 오프라인·실패면 sync_queue 적재까지 처리한다. 여기서 분기하지 않는다.
       await ref.read(collectionRepositoryProvider).saveWishItem(item);
       navigator.pop();
-      messenger.showSnackBar(const SnackBar(content: Text('희망 목록에 추가했습니다')));
+      messenger.showSnackBar(SnackBar(
+        content: Text(_isEditing ? '희망 항목을 수정했습니다' : '희망 목록에 추가했습니다'),
+      ));
     } catch (e) {
       if (!mounted) return;
       setState(() => _saving = false);
@@ -355,92 +425,159 @@ class _AddWishSheetState extends ConsumerState<_AddWishSheet> {
         top: 20,
         bottom: MediaQuery.of(context).viewInsets.bottom + 20,
       ),
-      child: Form(
-        key: _formKey,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              '희망 항목 추가',
-              style: TextStyle(
-                color: AppColors.cream,
-                fontSize: 17,
-                fontWeight: FontWeight.w600,
-              ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            _isEditing ? '희망 항목 편집' : '희망 항목 추가',
+            style: const TextStyle(
+              color: AppColors.cream,
+              fontSize: 17,
+              fontWeight: FontWeight.w600,
             ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _composerCtrl,
-              autofocus: true,
-              textInputAction: TextInputAction.next,
-              style: const TextStyle(color: AppColors.cream),
-              decoration: const InputDecoration(
-                labelText: '작곡가 *',
-                hintText: '예: Beethoven',
-              ),
-              validator: (v) =>
-                  (v == null || v.trim().isEmpty) ? '작곡가를 입력하세요' : null,
+          ),
+          const SizedBox(height: 16),
+          AutocompleteField<String>(
+            controller: _composerCtrl,
+            focusNode: _composerFocus,
+            label: '작곡가 *',
+            hint: '예: Beethoven',
+            // 신규는 바로 입력, 편집은 기존 값을 먼저 보게 둔다(키보드 안 띄움).
+            autofocus: !_isEditing,
+            search: (q) =>
+                ref.read(collectionRepositoryProvider).suggestComposers(q),
+            displayString: (s) => s,
+            optionBuilder: (s) => Text(s,
+                style:
+                    const TextStyle(color: AppColors.cream, fontSize: 14)),
+            onSelected: (_) => setState(() {
+              // 작곡가가 바뀌면 이전 매칭은 더는 유효하지 않다.
+              _workId = null;
+              _matchedTitle = null;
+              _composerError = null;
+            }),
+            onChanged: (_) => setState(() {
+              _workId = null;
+              _matchedTitle = null;
+              _composerError = null;
+            }),
+          ),
+          if (_composerError != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 6, left: 12),
+              child: Text(_composerError!,
+                  style: const TextStyle(color: AppColors.red, fontSize: 12)),
             ),
-            const SizedBox(height: 12),
-            TextFormField(
-              controller: _titleCtrl,
-              textInputAction: TextInputAction.done,
-              style: const TextStyle(color: AppColors.cream),
-              decoration: const InputDecoration(
-                labelText: '작품명 / 음반명',
-                hintText: '예: 교향곡 5번 Op.67',
-              ),
-              onFieldSubmitted: (_) => _saving ? null : _save(),
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              '희망 단위',
-              style: TextStyle(color: AppColors.muted, fontSize: 13),
-            ),
-            const SizedBox(height: 6),
-            // 작품 단위(연주 무관) vs 음반 단위(특정 릴리스) — §6-2의 이중 성격.
-            SegmentedButton<WishType>(
-              segments: WishType.values
-                  .map((t) => ButtonSegment<WishType>(
-                        value: t,
-                        label: Text(t.label),
-                      ))
-                  .toList(),
-              selected: {_type},
-              showSelectedIcon: false,
-              onSelectionChanged: (s) => setState(() => _type = s.first),
-            ),
-            const SizedBox(height: 20),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
+          const SizedBox(height: 12),
+          AutocompleteField<Work>(
+            controller: _titleCtrl,
+            focusNode: _titleFocus,
+            label: '작품명 / 음반명',
+            hint: '예: Symphony No. 5',
+            search: (q) => ref
+                .read(collectionRepositoryProvider)
+                .suggestWorks(_composerCtrl.text, q),
+            displayString: (w) => w.title,
+            optionBuilder: (w) => Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                TextButton(
-                  onPressed:
-                      _saving ? null : () => Navigator.pop(context),
-                  child: const Text('취소',
-                      style: TextStyle(color: AppColors.muted)),
-                ),
-                const SizedBox(width: 8),
-                FilledButton(
-                  style: FilledButton.styleFrom(
-                    backgroundColor: AppColors.gold,
-                    foregroundColor: AppColors.bg,
+                Text(w.title,
+                    style: const TextStyle(
+                        color: AppColors.cream, fontSize: 14)),
+                if (w.genre != null || w.period != null)
+                  Text(
+                    [w.genre, w.period].whereType<String>().join(' · '),
+                    style: const TextStyle(
+                        color: AppColors.muted, fontSize: 11),
                   ),
-                  onPressed: _saving ? null : _save,
-                  child: _saving
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(
-                              strokeWidth: 2, color: AppColors.bg),
-                        )
-                      : const Text('추가'),
-                ),
               ],
             ),
-          ],
-        ),
+            onSelected: (w) => setState(() {
+              _workId = w.id;
+              _matchedTitle = w.title;
+              // 자동완성 목록은 이 작곡가의 works에서 왔으므로 표기를 정규명에 맞춘다.
+              _composerCtrl.text = w.composer;
+            }),
+            onChanged: (v) => setState(() {
+              // 고른 뒤 제목을 손으로 고치면 참조와 표기가 어긋난다 — 매칭 해제.
+              if (_matchedTitle != null && v != _matchedTitle) {
+                _workId = null;
+                _matchedTitle = null;
+              }
+            }),
+          ),
+          if (_workId != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Row(
+                children: [
+                  Icon(
+                    _canLinkWork ? Icons.link : Icons.link_off,
+                    size: 14,
+                    color: _canLinkWork ? AppColors.gold : AppColors.muted,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    _canLinkWork
+                        ? '작품 데이터와 연결됨'
+                        : '음반 단위는 작품 연결을 저장하지 않습니다',
+                    style: TextStyle(
+                      color: _canLinkWork
+                          ? AppColors.gold.withValues(alpha: 0.9)
+                          : AppColors.muted,
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          const SizedBox(height: 16),
+          const Text(
+            '희망 단위',
+            style: TextStyle(color: AppColors.muted, fontSize: 13),
+          ),
+          const SizedBox(height: 6),
+          // 작품 단위(연주 무관) vs 음반 단위(특정 릴리스) — §6-2의 이중 성격.
+          SegmentedButton<WishType>(
+            segments: WishType.values
+                .map((t) => ButtonSegment<WishType>(
+                      value: t,
+                      label: Text(t.label),
+                    ))
+                .toList(),
+            selected: {_type},
+            showSelectedIcon: false,
+            onSelectionChanged: (s) => setState(() => _type = s.first),
+          ),
+          const SizedBox(height: 20),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              TextButton(
+                onPressed: _saving ? null : () => Navigator.pop(context),
+                child: const Text('취소',
+                    style: TextStyle(color: AppColors.muted)),
+              ),
+              const SizedBox(width: 8),
+              FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.gold,
+                  foregroundColor: AppColors.bg,
+                ),
+                onPressed: _saving ? null : _save,
+                child: _saving
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: AppColors.bg),
+                      )
+                    : Text(_isEditing ? '저장' : '추가'),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
