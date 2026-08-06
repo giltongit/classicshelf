@@ -98,6 +98,36 @@ class DiscogsMatch {
   }
 }
 
+/// 한 바코드로 시도해 볼 표기 후보를 순서대로 만든다.
+///
+/// 왜 필요한가: 같은 음반이라도 표기가 흔들린다.
+///   · 인쇄 표기에 공백·하이픈이 섞인다 — "7 2064-24425-2 4"
+///   · 미국반은 UPC-A(12자리), 그 외는 EAN-13(13자리)인데 둘은 앞자리 `0`
+///     하나 차이다. 스캐너가 준 자릿수와 Discogs에 등록된 자릿수가 엇갈리면
+///     같은 음반인데도 0건이 나온다(§17-28 "포맷 불일치").
+///
+/// 첫 원소는 언제나 정규화한 원본이다 — 두 번째부터 걸리면 포맷 불일치였다는
+/// 뜻이라, 호출자가 그걸로 실패 원인을 가른다.
+List<String> discogsBarcodeCandidates(String raw) {
+  final normalized = raw.replaceAll(RegExp(r'[^0-9A-Za-z]'), '');
+  if (normalized.isEmpty) return const [];
+
+  final out = [normalized];
+
+  void add(String c) {
+    if (c.isNotEmpty && !out.contains(c)) out.add(c);
+  }
+
+  // UPC-A(12) → EAN-13: 앞에 0을 붙인 게 같은 바코드다.
+  if (normalized.length == 12) add('0$normalized');
+  // EAN-13(13)인데 앞이 0 → UPC-A로 등록돼 있을 수 있다.
+  if (normalized.length == 13 && normalized.startsWith('0')) {
+    add(normalized.substring(1));
+  }
+
+  return out;
+}
+
 class DiscogsService {
   final http.Client _client;
 
@@ -106,19 +136,29 @@ class DiscogsService {
   /// 바코드로 릴리스 후보를 찾는다. 결과 순서는 Discogs가 준 순서를 그대로 둔다
   /// (자체 정렬을 하면 어떤 기준으로 골라야 할지 근거가 없다).
   ///
-  /// 바코드는 표기 흔들림이 심하다("7 2064-24425-2 4" vs "720642442524").
-  /// 검색은 정규화한 숫자열로 하고, 그래도 0건이면 원문으로 한 번 더 시도한다.
+  /// 후보 표기를 순서대로 넣어 보고 처음 걸리는 걸 쓴다 —
+  /// 자세한 규칙은 [discogsBarcodeCandidates].
   Future<List<DiscogsMatch>> searchByBarcode(String barcode) async {
-    final normalized = barcode.replaceAll(RegExp(r'[^0-9A-Za-z]'), '');
-    var results = await _search(normalized);
-
-    // EAN-13은 앞자리 0이 붙기도 하고 빠지기도 한다 — 양쪽을 한 번씩 더 본다.
-    if (results.isEmpty && normalized.length == 12) {
-      results = await _search('0$normalized');
-    } else if (results.isEmpty && normalized.startsWith('0')) {
-      results = await _search(normalized.substring(1));
+    final candidates = discogsBarcodeCandidates(barcode);
+    if (candidates.isEmpty) {
+      debugPrint('[DISCOGS] 검색 건너뜀 — 정규화 후 남는 값 없음 raw="$barcode"');
+      return const [];
     }
-    return results;
+
+    for (var i = 0; i < candidates.length; i++) {
+      final results = await _search(candidates[i]);
+      if (results.isEmpty) continue;
+      if (i > 0) {
+        // 원본으로는 0건이었는데 변형으로 걸렸다 = 포맷 불일치(§2-4 분류).
+        debugPrint('[DISCOGS] retry(normalized)=${candidates[i]} '
+            'items=${results.length} (원본 "${candidates.first}" 는 0건)');
+      }
+      return results;
+    }
+
+    debugPrint('[DISCOGS] 후보 ${candidates.length}종 모두 0건 — '
+        '${candidates.join(" / ")}');
+    return const [];
   }
 
   Future<List<DiscogsMatch>> _search(String barcode) async {
@@ -129,24 +169,41 @@ class DiscogsService {
       'per_page': '100',
     });
 
-    final json = await _getJson(uri);
-    final results = json['results'];
-    if (results is! List) return const [];
+    final res = await _getJson(uri);
+    final raw = res.json['results'];
+    final list = raw is List ? raw : const [];
 
-    return results
+    final rows = list
         .whereType<Map<String, dynamic>>()
         .where((r) => r['type'] == 'release' && r['id'] is num)
-        .map(DiscogsMatch.fromJson)
         .toList();
+    final kept = rows.map(DiscogsMatch.fromJson).toList();
+
+    // 진단용(§2-1).
+    //   total    — Discogs가 센 전체 건수. items와 다르면 우리 필터가 걸러낸 것.
+    //   verified — 결과에 실린 바코드가 실제로 우리가 물어본 값과 같은 건수.
+    //
+    // verified가 필요한 이유: Discogs의 barcode 검색은 완전 일치가 아니다.
+    // 없는 바코드("9999999999999")를 넣어도 무관한 릴리스가 14건 돌아온다
+    // (실측). 그래서 "0건 = 미보유"가 성립하지 않는다 — items는 많은데
+    // verified가 0이면 그게 진짜 미보유 신호다(§2-4 분류의 핵심 지표).
+    final total = (res.json['pagination'] as Map?)?['items'];
+    final verified = rows.where((r) => discogsRowHasBarcode(r, barcode)).length;
+
+    debugPrint('[DISCOGS] query=$barcode status=${res.status} '
+        'items=${kept.length} verified=$verified'
+        '${total != null && total != kept.length ? ' total=$total' : ''}');
+
+    return kept;
   }
 
   /// 릴리스 상세 → 폼에 바로 넣을 수 있는 초안.
   Future<AlbumDraft> fetchRelease(int releaseId) async {
-    final json = await _getJson(Uri.https(_host, '/releases/$releaseId'));
-    return mapDiscogsReleaseToDraft(json);
+    final res = await _getJson(Uri.https(_host, '/releases/$releaseId'));
+    return mapDiscogsReleaseToDraft(res.json);
   }
 
-  Future<Map<String, dynamic>> _getJson(Uri uri) async {
+  Future<({int status, Map<String, dynamic> json})> _getJson(Uri uri) async {
     http.Response res;
     try {
       res = await _client
@@ -160,9 +217,11 @@ class DiscogsService {
     if (res.statusCode == 429) {
       // 미인증 25 req/min. 사용자가 연속으로 스캔했을 때만 볼 화면이라
       // 재시도 대신 잠깐 기다리라고 안내한다.
+      debugPrint('[DISCOGS] status=429 레이트리밋 $uri');
       throw const DiscogsException('조회 요청이 많습니다. 1분 후 다시 시도해 주세요');
     }
     if (res.statusCode == 404) {
+      debugPrint('[DISCOGS] status=404 $uri');
       throw const DiscogsException('해당 음반 정보를 찾을 수 없습니다');
     }
     if (res.statusCode != 200) {
@@ -177,7 +236,7 @@ class DiscogsService {
       if (decoded is! Map<String, dynamic>) {
         throw const DiscogsException('음반 정보 형식이 올바르지 않습니다');
       }
-      return decoded;
+      return (status: res.statusCode, json: decoded);
     } on DiscogsException {
       rethrow;
     } catch (e) {
@@ -187,4 +246,27 @@ class DiscogsService {
   }
 
   void dispose() => _client.close();
+}
+
+
+/// 검색 결과 한 줄이 실제로 이 바코드를 달고 있는지.
+///
+/// 결과 JSON의 barcode 배열에는 인쇄 표기가 그대로 들어 있어서
+/// ("7 2064-24425-2 4") 숫자만 남겨 비교한다. UPC-A/EAN-13은 앞자리 0
+/// 차이뿐이므로 **선행 0을 전부** 떼어 같은 자리에 맞춘다 — 하나만 떼면
+/// "0028947775782"와 "028947775782"가 서로 다른 값이 되어 버린다.
+///
+/// 부분 일치는 통과시키지 않는다. Discogs 검색이 물어다 주는 노이즈가
+/// 정확히 그 모양이라(러너아웃에 숫자가 길게 박힌 릴리스), 부분 일치를
+/// 허용하면 대조 지표가 의미를 잃는다.
+bool discogsRowHasBarcode(Map<String, dynamic> row, String query) {
+  String canon(String s) =>
+      s.replaceAll(RegExp(r'[^0-9]'), '').replaceFirst(RegExp(r'^0+'), '');
+
+  final want = canon(query);
+  if (want.isEmpty) return false;
+
+  final barcodes = (row['barcode'] as List?)?.whereType<String>() ?? const [];
+  return barcodes.any((b) => canon(b) == want);
+
 }

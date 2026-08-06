@@ -14,6 +14,7 @@
 // =============================================================================
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
@@ -65,10 +66,20 @@ class _BarcodeScanScreenState extends ConsumerState<BarcodeScanScreen> {
   Future<void> _onDetect(BarcodeCapture capture) async {
     if (_busy) return;
 
-    final code = capture.barcodes
-        .map((b) => b.rawValue)
-        .firstWhere((v) => v != null && v.trim().isNotEmpty, orElse: () => null);
-    if (code == null) return;
+    final barcode = capture.barcodes.firstWhere(
+      (b) => (b.rawValue ?? '').trim().isNotEmpty,
+      orElse: () => const Barcode(),
+    );
+    final code = barcode.rawValue?.trim();
+    if (code == null || code.isEmpty) return;
+
+    // 진단 로그 (§17-28). 실패를 "인식 실패 / 포맷 불일치 / 진짜 미보유"로
+    // 가르려면 스캐너가 실제로 뭘 읽었는지가 출발점이다.
+    //   · len — EAN-13(13)·UPC-A(12)가 아닌 자릿수면 오인식을 의심한다.
+    //   · format — 심볼로지. UPC-E(8자리 압축)가 찍히면 12자리로 펴야
+    //     Discogs와 맞는데 지금은 그 변환이 없다. 실제로 나오는지 여기서 본다.
+    debugPrint('[BARCODE] raw=$code len=${code.length} '
+        'format=${barcode.format.name}');
 
     setState(() {
       _busy = true;
@@ -78,7 +89,7 @@ class _BarcodeScanScreenState extends ConsumerState<BarcodeScanScreen> {
     await _controller.stop();
 
     try {
-      await _lookup(code.trim());
+      await _lookup(code);
     } catch (e) {
       if (!mounted) return;
       final message = e is DiscogsException ? e.message : '조회에 실패했습니다';
@@ -87,7 +98,7 @@ class _BarcodeScanScreenState extends ConsumerState<BarcodeScanScreen> {
         _statusMessage = null;
       });
       // 실패해도 수동 입력으로 이을 수 있게 선택지를 준다.
-      final retry = await _askRetry(message, code.trim());
+      final retry = await _askRetry(message, code);
       if (!mounted) return;
       if (retry) {
         await _controller.start();
@@ -174,10 +185,25 @@ class _BarcodeScanScreenState extends ConsumerState<BarcodeScanScreen> {
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.surface2,
         title: const Text('일치하는 음반을 찾지 못했습니다'),
-        content: Text(
-          '바코드 $barcode 로 등록된 음반 정보가 없습니다.\n'
-          '직접 입력해서 등록할 수 있습니다.',
-          style: const TextStyle(color: AppColors.cream),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              '이 바코드로 등록된 음반 정보가 Discogs에 없습니다.',
+              style: TextStyle(color: AppColors.cream),
+            ),
+            const SizedBox(height: 12),
+            // 스캔한 원본 값을 그대로 보여 준다(§17-28). 이 값이 있어야
+            // 사용자가 discogs.com에서 직접 찾아보고 "정말 없는 건지,
+            // 우리가 잘못 읽은 건지"를 스스로 가를 수 있다.
+            _ScannedBarcodeBox(barcode: barcode),
+            const SizedBox(height: 12),
+            const Text(
+              '직접 입력해서 등록할 수 있습니다. 바코드는 그대로 저장됩니다.',
+              style: TextStyle(color: AppColors.muted, fontSize: 12),
+            ),
+          ],
         ),
         actions: [
           TextButton(
@@ -201,7 +227,17 @@ class _BarcodeScanScreenState extends ConsumerState<BarcodeScanScreen> {
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.surface2,
         title: const Text('조회 실패'),
-        content: Text(message, style: const TextStyle(color: AppColors.cream)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(message, style: const TextStyle(color: AppColors.cream)),
+            const SizedBox(height: 12),
+            // 실패 원인이 네트워크든 뭐든, 읽어낸 값은 보여 준다 —
+            // 스캔이 제대로 됐는지부터 사용자가 눈으로 가를 수 있어야 한다.
+            _ScannedBarcodeBox(barcode: barcode),
+          ],
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
@@ -285,6 +321,62 @@ class _BarcodeScanScreenState extends ConsumerState<BarcodeScanScreen> {
                 child: CircularProgressIndicator(color: AppColors.gold),
               ),
             ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 스캔한 원본 바코드 표시 + 복사 (§17-28).
+///
+/// 조회에 실패했을 때 사용자가 쥘 수 있는 단서는 이 값 하나뿐이다.
+/// discogs.com에 붙여넣어 직접 검색해 보면 "우리가 잘못 읽었나"와
+/// "정말 Discogs에 없나"가 그 자리에서 갈린다.
+class _ScannedBarcodeBox extends StatelessWidget {
+  final String barcode;
+
+  const _ScannedBarcodeBox({required this.barcode});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
+      decoration: BoxDecoration(
+        color: AppColors.surface3,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('스캔한 바코드',
+                    style: TextStyle(color: AppColors.muted, fontSize: 11)),
+                const SizedBox(height: 2),
+                SelectableText(
+                  barcode,
+                  style: const TextStyle(
+                    color: AppColors.gold2,
+                    fontSize: 16,
+                    fontFamily: 'monospace',
+                    letterSpacing: 1.2,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            tooltip: '복사',
+            icon: const Icon(Icons.copy, size: 18, color: AppColors.muted),
+            onPressed: () async {
+              await Clipboard.setData(ClipboardData(text: barcode));
+              if (!context.mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('바코드를 복사했습니다')),
+              );
+            },
+          ),
         ],
       ),
     );
