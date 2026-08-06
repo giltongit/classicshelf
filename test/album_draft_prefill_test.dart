@@ -92,6 +92,46 @@ void main() {
     expect(find.text('Overture "Egmont", Op. 84'), findsOneWidget);
   });
 
+  testWidgets('곡별 연주자 override가 카드에 pre-fill되고 펼쳐져 보인다 (§17-29)',
+      (tester) async {
+    // 컴필레이션처럼 곡마다 연주자가 다른 경우. 접혀 있으면 자동으로 들어온
+    // 값을 모르고 지나치므로, override가 있는 카드는 펼친 채로 떠야 한다.
+    await _pump(
+      tester,
+      draft: const AlbumDraft(
+        title: 'Classical Chillout',
+        defaultPerformers: [],
+        compositions: [
+          DraftComposition(
+            composer: 'Samuel Barber',
+            title: 'Adagio For Strings',
+            performerOverrides: [
+              DraftPerformer(role: 'conductor', name: 'Leonard Slatkin'),
+              DraftPerformer(role: 'orchestra', name: 'St. Louis Symphony'),
+            ],
+          ),
+        ],
+        sourceName: 'Discogs',
+        sourceUrl: 'https://www.discogs.com/release/1',
+      ),
+    );
+
+    expect(find.text('Leonard Slatkin'), findsOneWidget);
+    expect(find.text('St. Louis Symphony'), findsOneWidget);
+    // 섹션이 펼쳐져 있어야 안내 문구가 보인다.
+    expect(find.text('지정한 역할만 앨범 기본값을 덮어씁니다. 비워 두면 전부 상속합니다.'),
+        findsOneWidget);
+  });
+
+  testWidgets('override가 없는 곡은 곡별 연주자 섹션이 접혀 있다 (상속 상태)',
+      (tester) async {
+    await _pump(tester, draft: _draft);
+
+    // _draft의 수록곡은 override가 없다 — 상속이므로 펼칠 이유가 없다.
+    expect(find.text('지정한 역할만 앨범 기본값을 덮어씁니다. 비워 두면 전부 상속합니다.'),
+        findsNothing);
+  });
+
   testWidgets('출처 표기와 원본 링크가 폼 위에 뜬다 (§2-5 표기 의무)', (tester) async {
     await _pump(tester, draft: _draft);
 

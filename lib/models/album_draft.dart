@@ -45,6 +45,14 @@ class DraftComposition {
   final int? trackTo;
   final List<DraftMovement> movements;
 
+  /// 이 곡만의 연주자 (§3-3 곡별 override). **null = 앨범 기본값 상속**이고,
+  /// 빈 리스트를 넣지 않는다 — 저장 계층(Composition.performerOverrides)이
+  /// null과 빈 리스트를 같은 뜻으로 보되 왕복 형태를 null로 맞추기 때문이다.
+  ///
+  /// 앨범 기본값과 **다른** 역할만 담는다. 같은 값을 굳이 override로 복사하면
+  /// 상속이 끊겨서, 나중에 앨범 기본 연주자를 고쳐도 이 곡만 옛 값에 남는다.
+  final List<DraftPerformer>? performerOverrides;
+
   const DraftComposition({
     this.composer = '',
     this.title,
@@ -53,6 +61,7 @@ class DraftComposition {
     this.trackFrom,
     this.trackTo,
     this.movements = const [],
+    this.performerOverrides,
   });
 }
 

@@ -7,6 +7,7 @@
 // =============================================================================
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mylibrary/models/album_draft.dart';
 import 'package:mylibrary/services/discogs_mapper.dart';
 
 /// 잘 정리된 클래식 박스세트를 본뜬 응답.
@@ -200,6 +201,29 @@ void main() {
       final j = _boxSet()..['extraartists'] = <dynamic>[];
       expect(mapDiscogsReleaseToDraft(j).defaultPerformers, isEmpty);
     });
+
+    test('성부는 "* Vocals" 접미사로 잡는다', () {
+      // 실측: Discogs는 Soprano Vocals / Tenor Vocals / Mezzo-soprano Vocals
+      // 처럼 성부 뒤에 Vocals를 붙인다. 성부만 나열하면 전부 놓친다.
+      final j = _boxSet()..['extraartists'] = [
+        {'role': 'Soprano Vocals', 'name': 'Kiri Te Kanawa'},
+        {'role': 'Tenor Vocals', 'name': 'Luciano Pavarotti'},
+        {'role': 'Mezzo-soprano Vocals', 'name': 'Cecilia Bartoli'},
+        {'role': 'Treble Vocals', 'name': 'Aled Jones'},
+      ];
+      final d = mapDiscogsReleaseToDraft(j);
+      expect(d.defaultPerformers.length, 4);
+      expect(d.defaultPerformers.every((p) => p.role == 'vocalist'), isTrue);
+    });
+
+    test('Soprano Saxophone은 성악이 아니라 독주로 간다', () {
+      // 성부 이름만 단독으로 잡으면 이걸 성악으로 오인한다.
+      final j = _boxSet()..['extraartists'] = [
+        {'role': 'Soprano Saxophone', 'name': 'Jan Garbarek'},
+      ];
+      expect(mapDiscogsReleaseToDraft(j).defaultPerformers.single.role,
+          'soloist');
+    });
   });
 
   group('작곡가', () {
@@ -341,6 +365,175 @@ void main() {
       ];
       expect(mapDiscogsReleaseToDraft(j).compositions.single.title,
           'Symphony No. 5 (1808)');
+    });
+  });
+
+  group('곡별 연주자 override (§17-29)', () {
+    /// 앨범 기본은 지휘 Karajan / 관현악 BPO. 트랙마다 크레딧을 갈아 끼운다.
+    Map<String, dynamic> withTrackCredits(List<Map<String, dynamic>> credits) =>
+        _boxSet()
+          ..['extraartists'] = [
+            {'role': 'Conductor', 'name': 'Herbert von Karajan'},
+            {'role': 'Orchestra', 'name': 'Berliner Philharmoniker'},
+          ]
+          ..['tracklist'] = [
+            {
+              'type_': 'track',
+              'position': '1-1',
+              'title': 'Track',
+              'extraartists': credits,
+            },
+          ];
+
+    DraftComposition only(Map<String, dynamic> j) =>
+        mapDiscogsReleaseToDraft(j).compositions.single;
+
+    test('트랙에 크레딧이 없으면 상속 — override는 null', () {
+      final c = only(withTrackCredits(const []));
+      expect(c.performerOverrides, isNull);
+    });
+
+    test('앨범 기본값과 같으면 상속 — 같은 값을 복사하지 않는다', () {
+      // 복사해 두면 상속이 끊겨서, 나중에 앨범 지휘자를 고쳐도 이 곡만 옛 값에 남는다.
+      final c = only(withTrackCredits([
+        {'role': 'Conductor', 'name': 'Herbert von Karajan'},
+        {'role': 'Orchestra', 'name': 'Berliner Philharmoniker'},
+      ]));
+      expect(c.performerOverrides, isNull);
+    });
+
+    test('다른 역할만 override에 담는다 — 같은 역할은 상속으로 남긴다', () {
+      // 지휘자만 다르고 악단은 같은 경우. 악단까지 담으면 상속이 끊긴다.
+      final c = only(withTrackCredits([
+        {'role': 'Conductor', 'name': 'Carlos Kleiber'},
+        {'role': 'Orchestra', 'name': 'Berliner Philharmoniker'},
+      ]));
+      expect(c.performerOverrides!.map((p) => '${p.role}:${p.name}'),
+          ['conductor:Carlos Kleiber']);
+    });
+
+    test('앨범에 없던 역할이 트랙에 있으면 override로 담는다', () {
+      final c = only(withTrackCredits([
+        {'role': 'Piano', 'name': 'Martha Argerich'},
+      ]));
+      expect(c.performerOverrides!.single.role, 'soloist');
+      expect(c.performerOverrides!.single.name, 'Martha Argerich');
+    });
+
+    test('한 역할에 연주자가 여럿이면 집합끼리 비교한다', () {
+      final j = _boxSet()
+        ..['extraartists'] = [
+          {'role': 'Piano', 'name': 'Martha Argerich'},
+          {'role': 'Piano', 'name': 'Nelson Freire'},
+        ]
+        ..['tracklist'] = [
+          {
+            'type_': 'track',
+            'position': '1-1',
+            'title': '같은 두 사람',
+            'extraartists': [
+              // 순서만 다르고 구성은 같다 — 상속이어야 한다.
+              {'role': 'Piano', 'name': 'Nelson Freire'},
+              {'role': 'Piano', 'name': 'Martha Argerich'},
+            ],
+          },
+          {
+            'type_': 'track',
+            'position': '1-2',
+            'title': '한 사람만',
+            'extraartists': [
+              {'role': 'Piano', 'name': 'Martha Argerich'},
+            ],
+          },
+        ];
+      final cs = mapDiscogsReleaseToDraft(j).compositions;
+      expect(cs[0].performerOverrides, isNull);
+      // 구성이 줄었으면 다른 값이다 — override로 담아야 한다.
+      expect(cs[1].performerOverrides!.length, 1);
+    });
+
+    test('Composed By는 연주자 override로 새어 들어가지 않는다', () {
+      final c = only(withTrackCredits([
+        {'role': 'Composed By', 'name': 'Franz Schubert'},
+      ]));
+      expect(c.performerOverrides, isNull);
+      expect(c.composer, 'Franz Schubert');
+    });
+
+    test('매핑 안 되는 역할만 있으면 override는 null', () {
+      // Performer·Strings 같은 모호한 역할은 버린다(§2-2) —
+      // 버린 결과가 빈 리스트가 아니라 null이어야 상속이 유지된다.
+      final c = only(withTrackCredits([
+        {'role': 'Performer', 'name': '아무개'},
+        {'role': 'Producer', 'name': '아무개2'},
+      ]));
+      expect(c.performerOverrides, isNull);
+    });
+
+    test('다악장 작품도 index의 크레딧으로 override를 만든다', () {
+      final j = _boxSet()
+        ..['extraartists'] = [
+          {'role': 'Conductor', 'name': 'Herbert von Karajan'},
+        ]
+        ..['tracklist'] = [
+          {
+            'type_': 'index',
+            'position': '',
+            'title': 'Piano Concerto No. 1',
+            'extraartists': [
+              {'role': 'Conductor', 'name': 'Claudio Abbado'},
+              {'role': 'Piano', 'name': 'Maurizio Pollini'},
+            ],
+            'sub_tracks': [
+              {'position': '1-1', 'title': 'Allegro', 'duration': '20:00'},
+            ],
+          },
+        ];
+      final c = mapDiscogsReleaseToDraft(j).compositions.single;
+      expect(c.movements.length, 1);
+      expect(c.performerOverrides!.map((p) => '${p.role}:${p.name}'),
+          ['conductor:Claudio Abbado', 'soloist:Maurizio Pollini']);
+    });
+
+    test('컴필레이션: 곡마다 다른 지휘자·독주자가 각자 override로 붙는다', () {
+      final j = _boxSet()
+        ..['artists'] = [
+          {'name': 'Various'},
+        ]
+        // 컴필레이션은 릴리스 단위 연주자가 없는 게 보통이다.
+        ..['extraartists'] = <dynamic>[]
+        ..['tracklist'] = [
+          {
+            'type_': 'track',
+            'position': '1-1',
+            'title': 'Adagio For Strings',
+            'artists': [
+              {'name': 'Samuel Barber'},
+            ],
+            'extraartists': [
+              {'role': 'Conductor', 'name': 'Leonard Slatkin'},
+              {'role': 'Orchestra', 'name': 'St. Louis Symphony'},
+            ],
+          },
+          {
+            'type_': 'track',
+            'position': '1-2',
+            'title': 'Gymnopédie No. 1',
+            'artists': [
+              {'name': 'Erik Satie'},
+            ],
+            'extraartists': [
+              {'role': 'Piano', 'name': 'Pascal Rogé'},
+            ],
+          },
+        ];
+      final d = mapDiscogsReleaseToDraft(j);
+      expect(d.defaultPerformers, isEmpty);
+      expect(d.compositions[0].composer, 'Samuel Barber');
+      expect(d.compositions[0].performerOverrides!.map((p) => p.name),
+          ['Leonard Slatkin', 'St. Louis Symphony']);
+      expect(d.compositions[1].composer, 'Erik Satie');
+      expect(d.compositions[1].performerOverrides!.single.name, 'Pascal Rogé');
     });
   });
 

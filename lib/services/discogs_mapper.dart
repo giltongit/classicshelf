@@ -26,6 +26,8 @@
 //   (§4-2 선택 입력 철학). 자동으로 채운 값은 화면에서 "확인 필요"로 뜬다.
 // =============================================================================
 
+import 'package:flutter/foundation.dart';
+
 import '../models/album.dart';
 import '../models/album_draft.dart';
 
@@ -34,23 +36,43 @@ import '../models/album_draft.dart';
 // ─────────────────────────────────────────────────────────────────────────────
 
 AlbumDraft mapDiscogsReleaseToDraft(Map<String, dynamic> j) {
-  final releaseCredits = _parseCredits(j['extraartists']);
+  // 매핑하지 못하고 버린 역할을 모아 마지막에 한 번만 찍는다(§2-2).
+  // 역할별로 그때그때 찍으면 트랙 수만큼 같은 줄이 반복된다.
+  final dropped = <String, int>{};
 
-  return AlbumDraft(
+  final releaseCredits = _parseCredits(j['extraartists']);
+  final albumPerformers = _performers(releaseCredits, dropped);
+
+  final draft = AlbumDraft(
     title: _nullIfEmpty(j['title'] as String?),
     label: _firstLabel(j['labels']),
     releaseYear: _year(j),
     discCount: _discCount(j),
     format: _format(j['formats']),
     barcode: _barcode(j['identifiers']),
-    defaultPerformers: _performers(releaseCredits),
+    defaultPerformers: albumPerformers,
     compositions: _compositions(
       j['tracklist'],
       fallbackComposer: _composer(releaseCredits, j['artists']),
+      albumPerformers: albumPerformers,
+      dropped: dropped,
     ),
     sourceName: 'Discogs',
     sourceUrl: _nullIfEmpty(j['uri'] as String?),
   );
+
+  _logDroppedRoles(dropped);
+  return draft;
+}
+
+/// 버린 역할을 빈도와 함께 남긴다. 매핑 테이블을 넓힐지 말지는 추측이 아니라
+/// 실제로 무엇이 얼마나 버려지는지를 보고 정해야 한다.
+void _logDroppedRoles(Map<String, int> dropped) {
+  if (dropped.isEmpty) return;
+  final sorted = dropped.entries.toList()
+    ..sort((a, b) => b.value.compareTo(a.value));
+  final summary = sorted.map((e) => '${e.key}×${e.value}').join(', ');
+  debugPrint('[DISCOGS] 매핑하지 않은 역할: $summary');
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -236,28 +258,52 @@ const _ensembleRoles = {
   'ensemble', 'choir', 'chorus', 'quartet', 'quintet', 'trio', 'string quartet',
 };
 const _vocalistRoles = {
-  'vocals', 'voice', 'soprano', 'mezzo-soprano', 'mezzo soprano', 'alto',
-  'contralto', 'countertenor', 'counter-tenor', 'tenor', 'baritone',
-  'bass-baritone', 'bass vocals', 'narrator', 'speaker',
+  'vocals', 'voice', 'narrator', 'speaker',
 };
+
+/// 성악 역할은 Discogs에서 성부 뒤에 " Vocals"가 붙어 온다 —
+/// "Soprano Vocals", "Tenor Vocals", "Mezzo-soprano Vocals", "Treble Vocals"…
+/// 성부를 일일이 나열하는 대신 접미사로 잡는다. 실측 12개 릴리스에서 이 한 줄이
+/// 놓치던 연주자 크레딧의 86%(285건)를 회수했고, 새로운 성부가 나와도 따라온다.
+///
+/// 접미사로 판정하는 게 안전한 이유: 악기명에는 이 접미사가 붙지 않는다.
+/// (성부 이름만 단독으로 잡으면 "Soprano Saxophone"을 성악으로 오인한다.)
+bool _isVocalRole(String role) => role.endsWith(' vocals');
+
 // 독주 악기. 클래식에서 실제로 보이는 것 위주 — 없는 악기는 그냥 안 잡힐 뿐이라
 // 사용자가 직접 넣으면 된다(잘못 잡는 것보다 낫다).
 const _soloistRoles = {
   'soloist', 'piano', 'fortepiano', 'harpsichord', 'organ', 'celesta',
   'violin', 'viola', 'cello', 'violoncello', 'double bass', 'contrabass',
-  'viola da gamba', 'lute', 'theorbo', 'guitar', 'harp', 'mandolin',
+  'viola da gamba', 'viol', 'lute', 'theorbo', 'guitar', 'harp', 'mandolin',
   'flute', 'recorder', 'oboe', 'oboe d\'amore', 'clarinet', 'bassoon',
   'horn', 'french horn', 'trumpet', 'trombone', 'tuba', 'cornet',
-  'saxophone', 'piccolo', 'percussion', 'timpani', 'accordion',
+  'saxophone', 'soprano saxophone', 'piccolo', 'percussion', 'timpani',
+  'marimba', 'accordion', 'harmonica',
 };
 
-List<DraftPerformer> _performers(_Credits credits) {
+/// 연주자가 아닌 게 분명한 역할 — 버리되 로그에도 남기지 않는다.
+/// 로그는 "매핑을 넓혀야 하나?" 판단용이라, 애초에 연주자가 아닌 것이 섞이면
+/// 신호가 묻힌다. (Composed By는 작곡가 경로가 따로 가져간다.)
+const _nonPerformerRoles = {
+  'composed by', 'arranged by', 'orchestrated by', 'transcription by',
+  'adapted by', 'producer', 'engineer', 'executive-producer', 'co-producer',
+  'liner notes', 'photography by', 'art direction', 'design', 'artwork',
+  'mastered by', 'mixed by', 'remastered by', 'recorded by', 'edited by',
+  'lacquer cut by', 'management', 'booklet editor', 'translated by',
+  'coordinator', 'compiled by', 'written-by', 'lyrics by', 'librettist',
+};
+
+/// 크레딧 → 연주자 목록. 허용 목록에 없는 역할은 버리고 [dropped]에 세어 둔다.
+List<DraftPerformer> _performers(_Credits credits, Map<String, int> dropped) {
   final out = <DraftPerformer>[];
   final seen = <String>{}; // 역할+이름 중복(복수 역할 표기) 제거
+  final matched = <String>{};
 
-  void take(Set<String> roles, PerformerRole target) {
+  void take(bool Function(String role) test, PerformerRole target) {
     for (final entry in credits.entries) {
-      if (!roles.contains(entry.key)) continue;
+      if (!test(entry.key)) continue;
+      matched.add(entry.key);
       for (final name in entry.value) {
         final key = '${target.value}|$name';
         if (seen.add(key)) {
@@ -268,13 +314,69 @@ List<DraftPerformer> _performers(_Credits credits) {
   }
 
   // 지휘자·악단이 목록 위쪽에 오도록 순서를 고정한다(폼에서 보이는 순서).
-  take(_conductorRoles, PerformerRole.conductor);
-  take(_orchestraRoles, PerformerRole.orchestra);
-  take(_ensembleRoles, PerformerRole.ensemble);
-  take(_soloistRoles, PerformerRole.soloist);
-  take(_vocalistRoles, PerformerRole.vocalist);
+  take(_conductorRoles.contains, PerformerRole.conductor);
+  take(_orchestraRoles.contains, PerformerRole.orchestra);
+  take(_ensembleRoles.contains, PerformerRole.ensemble);
+  take(_soloistRoles.contains, PerformerRole.soloist);
+  take((r) => _vocalistRoles.contains(r) || _isVocalRole(r),
+      PerformerRole.vocalist);
+
+  for (final entry in credits.entries) {
+    if (matched.contains(entry.key)) continue;
+    if (_nonPerformerRoles.contains(entry.key)) continue;
+    dropped[entry.key] = (dropped[entry.key] ?? 0) + entry.value.length;
+  }
 
   return out;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 곡별 연주자 override (§3-3 · §17-29)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// 트랙 크레딧을 앨범 기본값과 견줘, **다른 역할만** override로 돌려준다.
+///
+/// 규칙(§3-3 role 단위 병합과 같은 원칙):
+///   · 트랙에 그 역할이 없으면        → 상속 (담지 않는다)
+///   · 트랙 값이 앨범 기본값과 같으면 → 상속 (담지 않는다)
+///   · 다르면                        → 그 역할의 트랙 값 전부를 담는다
+///
+/// 같은 값을 굳이 복사하지 않는 게 중요하다. 복사해 두면 상속이 끊겨서, 나중에
+/// 앨범 기본 지휘자를 고쳐도 이 곡만 옛 이름으로 남는다.
+///
+/// 반환값이 비면 null — 빈 리스트가 아니다(§3-3: 행 없음 = 상속).
+List<DraftPerformer>? _overridesFor(
+  _Credits trackCredits,
+  List<DraftPerformer> albumPerformers,
+  Map<String, int> dropped,
+) {
+  final trackPerformers = _performers(trackCredits, dropped);
+  if (trackPerformers.isEmpty) return null;
+
+  Map<String, Set<String>> byRole(List<DraftPerformer> ps) {
+    final m = <String, Set<String>>{};
+    for (final p in ps) {
+      (m[p.role] ??= <String>{}).add(p.name);
+    }
+    return m;
+  }
+
+  final albumByRole = byRole(albumPerformers);
+  final trackByRole = byRole(trackPerformers);
+
+  // 역할별로 앨범 기본값과 이름 집합을 통째로 비교한다. 한 역할에 연주자가
+  // 여럿인 경우(독주 둘 등)가 있어 개별 이름이 아니라 집합끼리 견준다.
+  final differing = trackByRole.entries
+      .where((e) => !setEquals(albumByRole[e.key] ?? const <String>{}, e.value))
+      .map((e) => e.key)
+      .toSet();
+
+  if (differing.isEmpty) return null;
+
+  // _performers가 정한 역할 순서를 그대로 살린다.
+  final out =
+      trackPerformers.where((p) => differing.contains(p.role)).toList();
+  return out.isEmpty ? null : out;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -352,6 +454,8 @@ int? _parseDuration(String? raw) {
 List<DraftComposition> _compositions(
   dynamic tracklist, {
   required String fallbackComposer,
+  required List<DraftPerformer> albumPerformers,
+  required Map<String, int> dropped,
 }) {
   if (tracklist is! List) return const [];
 
@@ -369,8 +473,14 @@ List<DraftComposition> _compositions(
 
     // 트랙 단위 크레딧이 있으면 릴리스 단위보다 우선한다 — 여러 작곡가가
     // 섞인 컴필레이션에서 곡마다 다른 작곡가를 잡아낸다.
-    final trackComposer = _composer(_parseCredits(t['extraartists']), t['artists']);
+    // 다악장 작품이라도 크레딧은 상위 index에 붙는다(실측: sub_tracks에만
+    // 붙은 사례 0건/92건). 그래서 하위를 뒤지지 않고 여기 것만 본다.
+    final trackCredits = _parseCredits(t['extraartists']);
+    final trackComposer = _composer(trackCredits, t['artists']);
     final composer = trackComposer.isNotEmpty ? trackComposer : fallbackComposer;
+
+    // 앨범 기본값과 다른 연주자만 곡별 override로 (§17-29).
+    final overrides = _overridesFor(trackCredits, albumPerformers, dropped);
 
     final subs = (t['sub_tracks'] as List?)?.whereType<Map>().toList() ?? const [];
 
@@ -383,6 +493,7 @@ List<DraftComposition> _compositions(
         discNo: pos.disc,
         trackFrom: pos.track,
         trackTo: pos.track,
+        performerOverrides: overrides,
       ));
       continue;
     }
@@ -416,6 +527,7 @@ List<DraftComposition> _compositions(
       trackFrom: first,
       trackTo: last,
       movements: movements,
+      performerOverrides: overrides,
     ));
   }
 

@@ -1702,6 +1702,16 @@ class _CompositionCard {
     trackTo.text = c.trackTo?.toString() ?? '';
     movements.addAll(c.movements.map(_MovementRow.fromDraft));
 
+    // 곡별 연주자 override (§17-29). null(=상속)이면 비워 둔다 —
+    // 빈 섹션이 곧 상속을 뜻한다(§3-3).
+    overrides.addAll(
+      (c.performerOverrides ?? const <DraftPerformer>[])
+          .map(_PerformerRow.fromDraft),
+    );
+    // 자동으로 채운 override는 펼쳐서 보여준다. 접어 두면 앨범 기본값과 다른
+    // 연주자가 들어온 걸 모르고 지나치는데, 확인이 필요한 값일수록 보여야 한다.
+    if (overrides.isNotEmpty) overridesExpanded = true;
+
     _markUnverified();
   }
 
