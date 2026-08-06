@@ -15,9 +15,19 @@ import '../repositories/collection_repository_impl.dart';
 import '../repositories/profile_repository.dart';
 import '../repositories/profile_repository_impl.dart';
 import '../services/auth_service.dart';
+import '../services/discogs_service.dart';
 
 final supabaseClientProvider = Provider<SupabaseClient>((ref) {
   return Supabase.instance.client;
+});
+
+/// 바코드 조회(§5). 상태를 갖지 않는 얇은 HTTP 래퍼라 앱 전역 하나로 충분하다.
+/// 조회 결과를 여기(또는 어디에도) 캐시하지 않는다 — Discogs API Terms의
+/// 6시간 캐시 제한 때문. 자세한 내용은 discogs_service.dart 상단 주석.
+final discogsServiceProvider = Provider<DiscogsService>((ref) {
+  final service = DiscogsService();
+  ref.onDispose(service.dispose);
+  return service;
 });
 
 final authServiceProvider = Provider<AuthService>((ref) {

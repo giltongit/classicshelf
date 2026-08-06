@@ -3,9 +3,9 @@
 <plist version="1.0">
 <dict>
 	<key>NSCameraUsageDescription</key>
-	<string>책 표지를 직접 촬영하기 위해 카메라 접근 권한이 필요합니다.</string>
+	<string>음반 표지를 촬영하고 바코드를 스캔하기 위해 카메라 접근 권한이 필요합니다.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>갤러리에서 책 표지 사진을 선택하기 위해 사진 접근 권한이 필요합니다.</string>
+	<string>갤러리에서 음반 표지 사진을 선택하기 위해 사진 접근 권한이 필요합니다.</string>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>

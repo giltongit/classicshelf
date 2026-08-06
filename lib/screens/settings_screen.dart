@@ -115,6 +115,8 @@ class SettingsScreen extends ConsumerWidget {
               ],
             ),
           ),
+          const _SectionHeader('정보'),
+          const _DiscogsAttribution(),
         ],
       ),
     );
@@ -445,6 +447,26 @@ class _CsvImportTileState extends ConsumerState<_CsvImportTile> {
 }
 
 String _two(int n) => n.toString().padLeft(2, '0');
+
+/// Discogs 출처 표기 (§2-5). Discogs API Terms of Use가 요구하는 고정 문구로,
+/// 문안을 임의로 줄이거나 바꾸면 안 된다(상표·비제휴 고지가 핵심).
+/// 바코드 조회 기능을 쓰는 한 이 표기는 앱에 남아 있어야 한다.
+class _DiscogsAttribution extends StatelessWidget {
+  const _DiscogsAttribution();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Padding(
+      padding: EdgeInsets.fromLTRB(16, 8, 16, 24),
+      child: Text(
+        "This application uses Discogs' API but is not affiliated with, "
+        "sponsored or endorsed by Discogs. 'Discogs' is a trademark of "
+        'Zink Media, LLC.',
+        style: TextStyle(color: AppColors.muted, fontSize: 11, height: 1.5),
+      ),
+    );
+  }
+}
 
 class _SectionHeader extends StatelessWidget {
   final String title;

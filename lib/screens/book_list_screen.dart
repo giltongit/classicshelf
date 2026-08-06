@@ -77,6 +77,13 @@ class AlbumListScreen extends ConsumerWidget {
           // 필터 시트 (§6-3). 시트가 albumFilterProvider를 갱신하면 목록은
           // reactive라 저절로 다시 그려진다 — 여기서 할 일이 없다.
           _FilterButton(activeCount: filter.activeCount),
+          // 바코드 스캔 → 조회 → 등록 폼 프리필 (§4-1). 직접 입력(+)과 나란히
+          // 두어, 자동입력이 실패해도 옆 버튼으로 이어갈 수 있게 한다.
+          IconButton(
+            icon: const Icon(Icons.qr_code_scanner),
+            tooltip: '바코드로 추가',
+            onPressed: () => context.push('/scan'),
+          ),
           IconButton(
             icon: const Icon(Icons.add),
             tooltip: '음반 추가',

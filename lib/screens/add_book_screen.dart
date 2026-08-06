@@ -6,8 +6,10 @@
 //   2B-2a 뼈대 → 2B-2b-① 편집 모드 → 2B-2b-② 악장 입력.
 //
 // 설계 전제(확정):
-//   · AlbumDraft 계층을 두지 않는다 — 화면 상태에서 바로 Album 애그리게이트를
-//     조립해 saveAlbum에 넘긴다. (Draft는 대 2 자동입력에서 필요해지면)
+//   · 화면 상태에서 바로 Album 애그리게이트를 조립해 saveAlbum에 넘긴다.
+//     AlbumDraft(models/album_draft.dart)는 저장 계층이 아니라 **입력 계층**이다 —
+//     바코드 조회 결과를 이 폼에 부어 넣기만 하고, 저장 경로는 손대지 않았다.
+//     초안이 오든 안 오든 _save() 아래는 똑같이 동작한다(대 2 자동입력).
 //   · 모든 수록곡은 앨범 기본 연주자를 상속한다
 //     (performerOverrides = null — 빈 리스트가 아니다. §3-2 상속 규칙).
 //
@@ -23,9 +25,11 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:uuid/uuid.dart';
 
 import '../models/album.dart';
+import '../models/album_draft.dart';
 import '../models/work.dart';
 import '../providers/providers.dart';
 import '../services/wish_resolution.dart';
@@ -42,7 +46,11 @@ class AddAlbumScreen extends ConsumerStatefulWidget {
   /// null이면 신규 등록, 값이 있으면 그 앨범의 편집 모드.
   final String? albumId;
 
-  const AddAlbumScreen({super.key, this.albumId});
+  /// 바코드 조회 결과 프리필(대 2 자동입력). 신규 등록에서만 쓴다 —
+  /// 편집 모드에 초안이 들어오면 기존 앨범을 덮게 되므로 무시한다.
+  final AlbumDraft? draft;
+
+  const AddAlbumScreen({super.key, this.albumId, this.draft});
 
   @override
   ConsumerState<AddAlbumScreen> createState() => _AddAlbumScreenState();
@@ -115,9 +123,34 @@ class _AddAlbumScreenState extends ConsumerState<AddAlbumScreen> {
     if (_isEditing) {
       _loading = true;
       _loadForEdit(widget.albumId!);
+    } else if (widget.draft != null) {
+      _applyDraft(widget.draft!);
     } else {
       _compositions.add(_CompositionCard());
     }
+  }
+
+  /// 바코드 조회 초안 → 폼 (대 2 자동입력).
+  ///
+  /// 편집 pre-fill과 결정적으로 다른 점: **id를 물고 오지 않는다.** 초안은 저장된
+  /// 적 없는 데이터라 여기서 카드·행을 만들 때 uuid가 처음 발급된다.
+  ///
+  /// 자동으로 채운 수록곡은 confidence를 unverified로 둔다(§2-4). 사용자가 그
+  /// 카드를 손대면 confirmed로 바뀌고, 그대로 저장하면 "확인 필요" 배지(§6-1)와
+  /// 검증 큐(§4-5)에 걸려 나중에 다시 볼 수 있다.
+  void _applyDraft(AlbumDraft d) {
+    _title.text = d.title ?? '';
+    _label.text = d.label ?? '';
+    _releaseYear.text = d.releaseYear?.toString() ?? '';
+    _discCount.text = (d.discCount ?? 1).toString();
+    // 정규화에 실패한 포맷은 비워 둔다 — 드롭다운에 없는 값을 넣으면 터진다.
+    _format = _formats.contains(d.format) ? d.format : null;
+    _barcode = d.barcode;
+
+    _performers.addAll(d.defaultPerformers.map(_PerformerRow.fromDraft));
+    _compositions.addAll(d.compositions.map(_CompositionCard.fromDraft));
+    // 수록곡을 하나도 못 채웠으면(트랙 정보 없는 릴리스) 빈 카드로 입력을 유도한다.
+    if (_compositions.isEmpty) _compositions.add(_CompositionCard());
   }
 
   /// 편집 진입 — 로컬에서 애그리게이트를 읽어 폼을 채운다.
@@ -246,9 +279,9 @@ class _AddAlbumScreenState extends ConsumerState<AddAlbumScreen> {
         trackFrom: int.tryParse(card.trackFrom.text.trim()),
         trackTo: int.tryParse(card.trackTo.text.trim()),
         seq: compositions.length, // 카드 순서 = seq (0, 1, 2…)
-        // 사용자가 직접 입력한 값이므로 confirmed.
-        // 자동입력(대 2)이 생기면 그 경로만 unverified로 들어온다.
-        confidence: Confidence.confirmed,
+        // 손으로 친 카드는 confirmed, 바코드 조회가 채운 카드는 unverified로
+        // 시작해 사용자가 작곡가·제목을 고치면 confirmed로 넘어간다(§2-4).
+        confidence: card.confidence,
         movements: movements,
         // null = 앨범 기본값 상속 (§3-2). 빈 리스트를 넣지 않는다.
         performerOverrides: overrides.isEmpty ? null : overrides,
@@ -394,6 +427,12 @@ class _AddAlbumScreenState extends ConsumerState<AddAlbumScreen> {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 20, 20, 40),
           children: [
+            // 출처 표기 (§2-5). Discogs 데이터가 채워진 화면에는 표기와 원본
+            // 링크가 있어야 한다(API Terms 의무 사항).
+            if (widget.draft?.hasAttribution ?? false) ...[
+              _SourceBadge(draft: widget.draft!),
+              const SizedBox(height: 16),
+            ],
             // ── Step 1 ──
             const _SectionLabel('음반 정보'),
             const SizedBox(height: 12),
@@ -1565,6 +1604,13 @@ class _PerformerRow {
     name.text = p.name;
   }
 
+  /// 자동입력 pre-fill — 저장된 적 없는 값이라 id를 새로 발급한다.
+  _PerformerRow.fromDraft(DraftPerformer p)
+      : id = _uuid.v4(),
+        role = PerformerRole.fromString(p.role) {
+    name.text = p.name;
+  }
+
   void dispose() => name.dispose();
 }
 
@@ -1581,6 +1627,13 @@ class _MovementRow {
 
   /// 편집 pre-fill — 기존 악장의 id를 물고 온다.
   _MovementRow.existing(Movement m) : id = m.id {
+    title.text = m.title;
+    trackNo.text = m.trackNo?.toString() ?? '';
+    duration.text = _durationToText(m.durationSec);
+  }
+
+  /// 자동입력 pre-fill — id를 새로 발급한다.
+  _MovementRow.fromDraft(DraftMovement m) : id = _uuid.v4() {
     title.text = m.title;
     trackNo.text = m.trackNo?.toString() ?? '';
     duration.text = _durationToText(m.durationSec);
@@ -1625,8 +1678,57 @@ class _CompositionCard {
   final composerFocus = FocusNode();
   final titleFocus = FocusNode();
 
+  /// 작품 매칭 신뢰도(§3-4). 사람이 친 값은 confirmed, 바코드 조회가 채운 값은
+  /// unverified로 시작해 사용자가 손대는 순간 confirmed로 넘어간다(§2-4).
+  /// "확인 필요" 배지(§6-1)·검증 큐(§4-5)가 이 값을 본다.
+  Confidence confidence = Confidence.confirmed;
+
+  /// 자동입력 카드에 붙는 감시자. 첫 수정에서 한 번만 일하고 스스로 뗀다.
+  VoidCallback? _touchWatcher;
+
   /// 새로 추가한 카드 — 여기서 id가 확정된다.
   _CompositionCard() : id = _uuid.v4();
+
+  /// 자동입력 pre-fill (대 2). 편집 pre-fill과 달리 id를 물고 오지 않는다 —
+  /// 저장된 적 없는 데이터라 여기가 id의 출생 시점이다.
+  _CompositionCard.fromDraft(DraftComposition c) : id = _uuid.v4() {
+    // 작곡가를 못 찾았으면 빈 칸으로 둔다. 이 카드는 저장 시 조용히 빠지고,
+    // 사용자가 채우면 그때 살아난다(§4-2 — 없는 걸 억지로 채우지 않는다).
+    composer.text = c.composer;
+    title.text = c.title ?? '';
+    catalogNumber.text = c.catalogNumber ?? '';
+    discNo.text = c.discNo?.toString() ?? '';
+    trackFrom.text = c.trackFrom?.toString() ?? '';
+    trackTo.text = c.trackTo?.toString() ?? '';
+    movements.addAll(c.movements.map(_MovementRow.fromDraft));
+
+    _markUnverified();
+  }
+
+  /// 이 카드를 "확인 필요"로 두고, 사용자가 작곡가·제목을 고치면 확인된 것으로
+  /// 넘긴다. 이 둘만 보는 이유: 자동입력이 실제로 틀리는 곳이 여기고,
+  /// 트랙 번호를 손봤다고 작품 매칭까지 검증된 건 아니기 때문이다.
+  void _markUnverified() {
+    confidence = Confidence.unverified;
+
+    void onTouched() {
+      if (confidence == Confidence.confirmed) return;
+      confidence = Confidence.confirmed;
+      _detachTouchWatcher();
+    }
+
+    _touchWatcher = onTouched;
+    composer.addListener(onTouched);
+    title.addListener(onTouched);
+  }
+
+  void _detachTouchWatcher() {
+    final watcher = _touchWatcher;
+    if (watcher == null) return;
+    composer.removeListener(watcher);
+    title.removeListener(watcher);
+    _touchWatcher = null;
+  }
 
   /// 편집 pre-fill — 기존 수록곡의 id를 물고 온다.
   /// 이 id가 유지되어야 저장 시 같은 행을 수정하고, 카드를 지우면
@@ -1652,6 +1754,10 @@ class _CompositionCard {
     overrides.addAll(
       (c.performerOverrides ?? const <Performer>[]).map(_PerformerRow.existing),
     );
+    // 이전에 자동입력으로 들어온 수록곡은 미확인 상태를 그대로 유지한다.
+    // 편집했다는 이유만으로 confirmed로 올리면, 손대지도 않은 곡이 검증 큐에서
+    // 조용히 사라진다.
+    if (c.confidence == Confidence.unverified) _markUnverified();
   }
 
   /// 아무것도 입력하지 않은 카드 — 저장 시 조용히 버린다.
@@ -1666,6 +1772,7 @@ class _CompositionCard {
       overrides.isEmpty;
 
   void dispose() {
+    _detachTouchWatcher();
     composerFocus.dispose();
     titleFocus.dispose();
     composer.dispose();
@@ -1712,6 +1819,63 @@ String _durationToText(int? sec) {
 //   AppTextField / AutocompleteField는 위시 편집 시트(§17-20)와 공유하려고
 //   widgets/form_fields.dart로 옮겼다.
 // ─────────────────────────────────────────────────────────────────────────────
+
+/// 자동입력 출처 배지 (§2-5). Discogs API Terms는 데이터가 보이는 화면에
+/// 출처 표기와 해당 데이터의 원본 링크를 함께 두도록 요구한다.
+///
+/// 안내 문구를 겸한다 — 자동으로 채운 값이라 확인이 필요하다는 걸 폼 첫 줄에서
+/// 알려야, 사용자가 아래 카드들을 그냥 지나치지 않는다.
+class _SourceBadge extends StatelessWidget {
+  final AlbumDraft draft;
+
+  const _SourceBadge({required this.draft});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: AppColors.goldSubtle,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.gold.withValues(alpha: 0.35)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.auto_awesome_outlined,
+              color: AppColors.gold, size: 18),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Data provided by ${draft.sourceName}',
+                  style: const TextStyle(
+                    color: AppColors.gold2,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                const Text(
+                  '자동으로 채운 값입니다 — 저장 전에 확인해 주세요',
+                  style: TextStyle(color: AppColors.muted, fontSize: 11),
+                ),
+              ],
+            ),
+          ),
+          TextButton(
+            onPressed: () => launchUrl(
+              Uri.parse(draft.sourceUrl!),
+              mode: LaunchMode.externalApplication,
+            ),
+            child: const Text('원본', style: TextStyle(fontSize: 12)),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 /// 좁은 행에 여러 개를 늘어놓아야 하는 아이콘 버튼(악장 순서·삭제).
 /// 기본 IconButton은 48dp 터치 영역을 차지해 세 개만 붙여도 제목 칸을 잡아먹는다.
