@@ -98,6 +98,58 @@ class DiscogsMatch {
   }
 }
 
+/// UPC-E(8자리) → UPC-A(12자리) 확장. 형태가 안 맞으면 null.
+///
+/// UPC-E는 UPC-A에서 연속된 0을 들어낸 압축 표기다. Discogs는 압축하지 않은
+/// UPC-A/EAN-13으로 등록돼 있어서, 8자리 그대로 물어보면 같은 음반이라도
+/// 안 걸린다.
+///
+/// 표준 확장 규칙 — 8자리를 NS X1..X6 C로 볼 때 **마지막 압축 자리 X6**이
+/// 0을 어디에 얼마나 넣을지를 정한다:
+///   X6 0~2 → NS X1 X2 X6 0000  X3 X4 X5 C
+///   X6 3   → NS X1 X2 X3 00000 X4 X5    C
+///   X6 4   → NS X1 X2 X3 X4 00000 X5    C
+///   X6 5~9 → NS X1..X5 0000 X6          C
+///
+/// 체크디지트로 자기검증한다. UPC-E의 체크디지트는 펼친 UPC-A의 체크디지트와
+/// 같아야 하므로, 안 맞으면 UPC-E가 아니다(EAN-8이거나 오인식) — 그때는
+/// 확장하지 않는다. 8자리라는 이유만으로 펼치면 EAN-8을 엉뚱한 12자리로
+/// 바꿔 조회하게 된다.
+String? expandUpcE(String raw) {
+  final s = raw.replaceAll(RegExp(r'[^0-9]'), '');
+  if (s.length != 8) return null;
+
+  final ns = s[0];
+  final x = s.substring(1, 7);
+  final check = s[7];
+
+  final String body;
+  switch (x[5]) {
+    case '0':
+    case '1':
+    case '2':
+      body = '$ns${x[0]}${x[1]}${x[5]}0000${x[2]}${x[3]}${x[4]}';
+    case '3':
+      body = '$ns${x[0]}${x[1]}${x[2]}00000${x[3]}${x[4]}';
+    case '4':
+      body = '$ns${x[0]}${x[1]}${x[2]}${x[3]}00000${x[4]}';
+    default:
+      body = '$ns${x[0]}${x[1]}${x[2]}${x[3]}${x[4]}0000${x[5]}';
+  }
+
+  return _upcaCheckDigit(body) == check ? '$body$check' : null;
+}
+
+/// UPC-A 앞 11자리로 체크디지트를 계산한다(홀수 자리 ×3 + 짝수 자리).
+String _upcaCheckDigit(String body11) {
+  var sum = 0;
+  for (var i = 0; i < body11.length; i++) {
+    final d = int.parse(body11[i]);
+    sum += i.isEven ? d * 3 : d;
+  }
+  return ((10 - sum % 10) % 10).toString();
+}
+
 /// 한 바코드로 시도해 볼 표기 후보를 순서대로 만든다.
 ///
 /// 왜 필요한가: 같은 음반이라도 표기가 흔들린다.
@@ -123,6 +175,14 @@ List<String> discogsBarcodeCandidates(String raw) {
   // EAN-13(13)인데 앞이 0 → UPC-A로 등록돼 있을 수 있다.
   if (normalized.length == 13 && normalized.startsWith('0')) {
     add(normalized.substring(1));
+  }
+
+  // UPC-E(8) → 펼친 UPC-A와 그 EAN-13형. 원본 뒤에 붙이는 이유: 압축 표기
+  // 그대로 등록된 릴리스가 있으면 그쪽이 먼저 걸려야 한다.
+  final expanded = expandUpcE(normalized);
+  if (expanded != null) {
+    add(expanded);
+    add('0$expanded');
   }
 
   return out;

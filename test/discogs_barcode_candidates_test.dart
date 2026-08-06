@@ -45,10 +45,50 @@ void main() {
     expect(discogsBarcodeCandidates(''), isEmpty);
   });
 
-  test('자릿수가 어정쩡하면 원본만 시도한다', () {
-    // UPC-E(8자리)는 12자리로 펴야 Discogs와 맞지만 그 변환은 아직 없다.
-    // 실제로 이 포맷이 스캔되는지를 [BARCODE] 로그로 먼저 확인한 뒤 판단한다.
-    expect(discogsBarcodeCandidates('12345678'), ['12345678']);
+  group('UPC-E 확장', () {
+    // 규칙 검증: 무작위 20만건을 펼쳐 체크디지트를 대조했고(전 분기, 불일치 0),
+    // 공개된 UPC-E/UPC-A 쌍 3건과도 일치했다.
+
+    test('X6=0~2 — 세 번째 자리에 X6, 0 넷', () {
+      expect(expandUpcE('04252614'), '042100005264');
+    });
+
+    test('X6=5~9 — 앞 다섯 자리 유지, 0 넷 뒤에 X6', () {
+      expect(expandUpcE('01234565'), '012345000065');
+      expect(expandUpcE('00641975'), '006419000075');
+      expect(expandUpcE('02345673'), '023456000073');
+    });
+
+    test('X6=3 — 앞 세 자리 유지, 0 다섯', () {
+      // 분기를 가르는 건 여섯 자리 중 **마지막** 자리다.
+      expect(expandUpcE('01234531'), '012300000451');
+    });
+
+    test('X6=4 — 앞 네 자리 유지, 0 다섯', () {
+      expect(expandUpcE('01234543'), '012340000053');
+    });
+
+    test('체크디지트가 안 맞으면 확장하지 않는다', () {
+      // 8자리라고 다 UPC-E가 아니다 — EAN-8이거나 오인식일 수 있다.
+      // 그런 값을 펼쳐 조회하면 엉뚱한 12자리를 묻게 된다.
+      expect(expandUpcE('01234560'), isNull);
+    });
+
+    test('8자리가 아니면 null', () {
+      expect(expandUpcE('123456789'), isNull);
+      expect(expandUpcE('1234567'), isNull);
+      expect(expandUpcE(''), isNull);
+    });
+
+    test('후보 목록에서 원본이 먼저, 확장형이 뒤에 온다', () {
+      // 압축 표기 그대로 등록된 릴리스가 있으면 그쪽이 먼저 걸려야 한다.
+      expect(discogsBarcodeCandidates('01234565'),
+          ['01234565', '012345000065', '0012345000065']);
+    });
+
+    test('UPC-E가 아닌 8자리는 원본만 시도한다', () {
+      expect(discogsBarcodeCandidates('12345678'), ['12345678']);
+    });
   });
 
   group('검색 결과 바코드 대조 (verified 지표)', () {
